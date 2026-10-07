@@ -1,0 +1,19 @@
+---
+applications:
+  - name: sap-repository-intelligence
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    env:
+      APP_ENV: btp
+      SAP_CONNECTION_MODE: btp
+      SAP_DESTINATION_NAME: ECC_DEV
+      EXPORT_MODE: zip
+      AUTH_MODE: xsuaa
+    services:
+      - sri-destination
+      - sri-connectivity
+      - sri-xsuaa

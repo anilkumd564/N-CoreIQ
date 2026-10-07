@@ -1,0 +1,33 @@
+{
+  "xsappname": "sap-repository-intelligence",
+  "tenant-mode": "dedicated",
+  "scopes": [
+    {"name": "$XSAPPNAME.RepositoryViewer", "description": "View repository metadata"},
+    {"name": "$XSAPPNAME.RepositoryExtractor", "description": "Extract repository objects"},
+    {"name": "$XSAPPNAME.RepositoryAdmin", "description": "Administer repository connectivity"}
+  ],
+  "role-templates": [
+    {
+      "name": "RepositoryViewer",
+      "description": "Repository read access",
+      "scope-references": ["$XSAPPNAME.RepositoryViewer"]
+    },
+    {
+      "name": "RepositoryExtractor",
+      "description": "Repository extraction access",
+      "scope-references": [
+        "$XSAPPNAME.RepositoryViewer",
+        "$XSAPPNAME.RepositoryExtractor"
+      ]
+    },
+    {
+      "name": "RepositoryAdmin",
+      "description": "Repository administration access",
+      "scope-references": [
+        "$XSAPPNAME.RepositoryViewer",
+        "$XSAPPNAME.RepositoryExtractor",
+        "$XSAPPNAME.RepositoryAdmin"
+      ]
+    }
+  ]
+}
