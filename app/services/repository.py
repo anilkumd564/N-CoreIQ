@@ -1,34 +1,53 @@
-from app.models.repository import RepositoryObject
+"""Repository service — thin orchestration layer.
+
+Routes Phase 3 discovery requests to RepositoryDiscoveryService and retains
+stub stubs for future phases (object detail, export, etc.).
+
+Phase 4 (source/metadata extraction) must NOT be implemented here.
+"""
+
+from __future__ import annotations
+
 from app.models.requests import ObjectKey, RepositorySearchRequest
-from app.models.results import SearchResult
+from app.models.results import RepositorySearchResponse
 from app.sap.connection.base import SapConnectionProvider
+from app.services.discovery import RepositoryDiscoveryService
 
 
 class RepositoryService:
-    def __init__(self, connection: SapConnectionProvider):
-        self.connection = connection
+    """Orchestrates repository operations.
 
-    async def search(self, request: RepositorySearchRequest) -> SearchResult:
+    Delegates Phase 3 discovery to :class:`RepositoryDiscoveryService`.
+    Placeholder stubs for Phase 4+ are kept here so the route layer
+    does not need to change when later phases are added.
+    """
+
+    def __init__(self, connection: SapConnectionProvider) -> None:
+        self._connection = connection
+        self._discovery = RepositoryDiscoveryService(connection)
+
+    # ------------------------------------------------------------------
+    # Phase 3 – Repository Discovery
+    # ------------------------------------------------------------------
+
+    async def search(self, request: RepositorySearchRequest) -> RepositorySearchResponse:
         """Discover custom SAP repository objects.
 
-        The SAP-side contract will ultimately map to Z_MCP_REPO_DISCOVER.
-        Keeping the contract here lets us test the API before ECC development starts.
+        Delegates entirely to :class:`RepositoryDiscoveryService`.  All
+        validation, normalisation, RFC invocation and response mapping
+        live in that service.
         """
-        response = await self.connection.call(
-            "Z_MCP_REPO_DISCOVER",
-            PACKAGES=request.packages,
-            INCLUDE_SUBPACKAGES=request.include_subpackages,
-            NAME_PATTERNS=request.name_patterns,
-            OBJECT_TYPES=request.object_types,
-            MAX_RESULTS=request.max_results,
-        )
-        objects = [RepositoryObject.model_validate(item) for item in response.get("objects", [])]
-        return SearchResult(count=len(objects), objects=objects)
+        return await self._discovery.search(request)
 
-    async def get_object(self, key: ObjectKey) -> RepositoryObject:
-        response = await self.connection.call(
-            "Z_MCP_REPO_GET_OBJECT",
-            OBJECT_TYPE=key.object_type,
-            OBJECT_NAME=key.object_name,
+    # ------------------------------------------------------------------
+    # Phase 4+ – Object detail (not yet implemented)
+    # ------------------------------------------------------------------
+
+    async def get_object(self, key: ObjectKey) -> None:
+        """Retrieve a single repository object with full metadata.
+
+        Phase 4 – not yet implemented.
+        """
+        raise NotImplementedError(
+            "Phase 4: Single-object detail retrieval is not yet implemented."
         )
-        return RepositoryObject.model_validate(response["object"])
