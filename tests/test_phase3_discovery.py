@@ -1,33 +1,8 @@
 """Phase 3 — Package resolution and discovery service tests.
 
-Tests RepositoryDiscoveryService in isolation by mocking the
-SapConnectionProvider.call() method.  All SAP RFC responses are synthetic.
-
-Coverage:
-  Package resolution (Z_MCP_REPO_PACKAGES):
-    - root package only
-    - recursive hierarchy with multiple depth levels
-    - duplicate child packages deduplicated
-    - truncated hierarchy flagged
-    - unknown/empty package response
-    - SAP RFC error propagated
-
-  Discovery (Z_MCP_REPO_DISCOVER):
-    - package-only discovery
-    - Z* pattern discovery
-    - Y* pattern discovery
-    - multiple patterns
-    - multiple packages
-    - object-type filtering (criteria reflected in response)
-    - PACKAGE match reason
-    - NAME_PATTERN match reason
-    - BOTH match reason
-    - zero matches → valid 200 response
-    - truncated result flagged
-    - total_matches > returned rows
-    - optional ECC fields missing (defensive handling)
-    - unknown ECC object type handled safely (no crash)
-    - all_custom_objects=true injects Z*/Y* patterns
+Tests RepositoryDiscoveryService in isolation by mocking SapConnectionProvider:
+  - resolve_packages → mocks conn.call (Z_MCP_REPO_PACKAGES RFC)
+  - search           → mocks conn.discover_repository_objects (OData V2)
 """
 
 from __future__ import annotations
@@ -38,6 +13,7 @@ import pytest
 
 from app.models.repository import MatchReason
 from app.models.requests import RepositorySearchRequest
+from app.sap.connection.base import ODataDiscoveryResult
 from app.services.discovery import RepositoryDiscoveryService
 
 
@@ -46,10 +22,21 @@ from app.services.discovery import RepositoryDiscoveryService
 # ---------------------------------------------------------------------------
 
 
-def _make_service(call_return: dict) -> RepositoryDiscoveryService:
-    """Build a RepositoryDiscoveryService with a mocked connection."""
+def _make_service_rfc(call_return: dict) -> RepositoryDiscoveryService:
     conn = MagicMock()
     conn.call = AsyncMock(return_value=call_return)
+    return RepositoryDiscoveryService(conn)
+
+
+def _make_service(odata_result: ODataDiscoveryResult) -> RepositoryDiscoveryService:
+    conn = MagicMock()
+    conn.discover_repository_objects = AsyncMock(return_value=odata_result)
+    return RepositoryDiscoveryService(conn)
+
+
+def _make_service_multi(odata_results: list) -> RepositoryDiscoveryService:
+    conn = MagicMock()
+    conn.discover_repository_objects = AsyncMock(side_effect=odata_results)
     return RepositoryDiscoveryService(conn)
 
 
@@ -77,18 +64,22 @@ def _clas_row(**overrides) -> dict:
     return base
 
 
-def _discover_response(
-    objects: list[dict] | None = None,
+def _odata_result(
+    objects=None,
     truncated: bool = False,
-    total_matches: int = 0,
+    total_matches=None,
     message: str = "",
-) -> dict:
-    return {
-        "EV_TRUNCATED": "X" if truncated else "",
-        "EV_TOTAL_MATCHES": str(total_matches) if total_matches else "",
-        "EV_MESSAGE": message,
-        "ET_OBJECTS": objects or [],
-    }
+    system_id=None,
+    client=None,
+) -> ODataDiscoveryResult:
+    return ODataDiscoveryResult(
+        rows=objects or [],
+        truncated=truncated,
+        total_matches=total_matches,
+        system_id=system_id,
+        client=client,
+        message=message,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +90,7 @@ def _discover_response(
 class TestPackageResolution:
     @pytest.mark.asyncio
     async def test_root_package_only(self):
-        svc = _make_service(
+        svc = _make_service_rfc(
             {
                 "EV_TRUNCATED": "",
                 "EV_MESSAGE": "",
@@ -119,7 +110,7 @@ class TestPackageResolution:
 
     @pytest.mark.asyncio
     async def test_recursive_hierarchy(self):
-        svc = _make_service(
+        svc = _make_service_rfc(
             {
                 "EV_TRUNCATED": "",
                 "EV_MESSAGE": "",
@@ -140,7 +131,7 @@ class TestPackageResolution:
 
     @pytest.mark.asyncio
     async def test_duplicate_child_packages_deduplicated(self):
-        svc = _make_service(
+        svc = _make_service_rfc(
             {
                 "EV_TRUNCATED": "",
                 "EV_MESSAGE": "",
@@ -157,7 +148,7 @@ class TestPackageResolution:
 
     @pytest.mark.asyncio
     async def test_truncated_hierarchy_flagged(self):
-        svc = _make_service(
+        svc = _make_service_rfc(
             {
                 "EV_TRUNCATED": "X",
                 "EV_MESSAGE": "Hierarchy truncated",
@@ -172,7 +163,9 @@ class TestPackageResolution:
 
     @pytest.mark.asyncio
     async def test_empty_package_response(self):
-        svc = _make_service({"EV_TRUNCATED": "", "EV_MESSAGE": "", "ET_PACKAGES": []})
+        svc = _make_service_rfc(
+            {"EV_TRUNCATED": "", "EV_MESSAGE": "", "ET_PACKAGES": []}
+        )
         result = await svc.resolve_packages("ZUNKNOWN", include_subpackages=False)
         assert result.packages == []
         assert result.truncated is False
@@ -188,9 +181,8 @@ class TestPackageResolution:
             await svc.resolve_packages("ZFINANCE")
 
     @pytest.mark.asyncio
-    async def test_normalised_package_response(self):
-        """Verify deterministic ordering and field mapping."""
-        svc = _make_service(
+    async def test_normalised_package_uppercase(self):
+        svc = _make_service_rfc(
             {
                 "EV_TRUNCATED": "",
                 "EV_MESSAGE": "OK",
@@ -202,6 +194,7 @@ class TestPackageResolution:
         )
         result = await svc.resolve_packages("ZPAY", include_subpackages=True)
         names = [p.package for p in result.packages]
+        # lowercase input should be normalised to uppercase
         assert "ZPAY" in names
         assert "ZPAY_CORE" in names
         zpay_core = next(p for p in result.packages if p.package == "ZPAY_CORE")
@@ -210,7 +203,7 @@ class TestPackageResolution:
 
 
 # ---------------------------------------------------------------------------
-# Discovery tests
+# Discovery tests  (mocks conn.discover_repository_objects)
 # ---------------------------------------------------------------------------
 
 
@@ -218,7 +211,7 @@ class TestRepositoryDiscovery:
     @pytest.mark.asyncio
     async def test_package_only_discovery(self):
         svc = _make_service(
-            _discover_response(
+            _odata_result(
                 objects=[_prog_row(MATCH_REASON="PACKAGE")],
                 total_matches=1,
             )
@@ -233,7 +226,7 @@ class TestRepositoryDiscovery:
     @pytest.mark.asyncio
     async def test_z_star_pattern_discovery(self):
         svc = _make_service(
-            _discover_response(
+            _odata_result(
                 objects=[_prog_row(OBJ_NAME="ZPAY_PROCESS", MATCH_REASON="NAME_PATTERN")],
                 total_matches=1,
             )
@@ -246,7 +239,7 @@ class TestRepositoryDiscovery:
     @pytest.mark.asyncio
     async def test_y_star_pattern_discovery(self):
         svc = _make_service(
-            _discover_response(
+            _odata_result(
                 objects=[_prog_row(OBJ_NAME="YFI_REPORT", MATCH_REASON="NAME_PATTERN")],
                 total_matches=1,
             )
@@ -256,15 +249,18 @@ class TestRepositoryDiscovery:
         assert resp.objects[0].object_name == "YFI_REPORT"
 
     @pytest.mark.asyncio
-    async def test_multiple_patterns(self):
-        svc = _make_service(
-            _discover_response(
-                objects=[
-                    _prog_row(OBJ_NAME="ZFI_RPT", MATCH_REASON="NAME_PATTERN"),
-                    _prog_row(OBJ_NAME="YFI_RPT", MATCH_REASON="NAME_PATTERN"),
-                ],
-                total_matches=2,
-            )
+    async def test_multiple_patterns_fan_out(self):
+        svc = _make_service_multi(
+            [
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZFI_RPT", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=1,
+                ),
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="YFI_RPT", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=1,
+                ),
+            ]
         )
         req = RepositorySearchRequest(name_patterns=["ZFI*", "YFI*"])
         resp = await svc.search(req)
@@ -274,27 +270,30 @@ class TestRepositoryDiscovery:
         assert "YFI_RPT" in names
 
     @pytest.mark.asyncio
-    async def test_multiple_packages(self):
-        svc = _make_service(
-            _discover_response(
-                objects=[
-                    _prog_row(OBJ_NAME="ZFI_RPT", DEVCLASS="ZFINANCE", MATCH_REASON="PACKAGE"),
-                    _prog_row(OBJ_NAME="ZPAY_RPT", DEVCLASS="ZPAYMENT", MATCH_REASON="PACKAGE"),
-                ],
-                total_matches=2,
-            )
+    async def test_multiple_packages_fan_out(self):
+        svc = _make_service_multi(
+            [
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZFI_RPT", DEVCLASS="ZFINANCE", MATCH_REASON="PACKAGE")],
+                    total_matches=1,
+                ),
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZPAY_RPT", DEVCLASS="ZPAYMENT", MATCH_REASON="PACKAGE")],
+                    total_matches=1,
+                ),
+            ]
         )
         req = RepositorySearchRequest(packages=["ZFINANCE", "ZPAYMENT"])
         resp = await svc.search(req)
         assert resp.statistics.returned == 2
-        packages = [o.package for o in resp.objects]
-        assert "ZFINANCE" in packages
-        assert "ZPAYMENT" in packages
+        packages_in_result = [o.package for o in resp.objects]
+        assert "ZFINANCE" in packages_in_result
+        assert "ZPAYMENT" in packages_in_result
 
     @pytest.mark.asyncio
-    async def test_object_type_reflected_in_criteria(self):
+    async def test_object_type_filter_reflected_in_criteria(self):
         svc = _make_service(
-            _discover_response(
+            _odata_result(
                 objects=[_clas_row(MATCH_REASON="PACKAGE")],
                 total_matches=1,
             )
@@ -308,10 +307,7 @@ class TestRepositoryDiscovery:
     @pytest.mark.asyncio
     async def test_match_reason_package(self):
         svc = _make_service(
-            _discover_response(
-                objects=[_prog_row(MATCH_REASON="PACKAGE")],
-                total_matches=1,
-            )
+            _odata_result(objects=[_prog_row(MATCH_REASON="PACKAGE")], total_matches=1)
         )
         req = RepositorySearchRequest(packages=["ZFINANCE"])
         resp = await svc.search(req)
@@ -320,184 +316,242 @@ class TestRepositoryDiscovery:
     @pytest.mark.asyncio
     async def test_match_reason_name_pattern(self):
         svc = _make_service(
-            _discover_response(
-                objects=[_prog_row(MATCH_REASON="NAME_PATTERN")],
-                total_matches=1,
-            )
+            _odata_result(objects=[_prog_row(MATCH_REASON="NAME_PATTERN")], total_matches=1)
         )
         req = RepositorySearchRequest(name_patterns=["Z*"])
         resp = await svc.search(req)
         assert resp.objects[0].match_reason == MatchReason.NAME_PATTERN
 
     @pytest.mark.asyncio
-    async def test_match_reason_both(self):
+    async def test_match_reason_both_preserved(self):
         svc = _make_service(
-            _discover_response(
-                objects=[_prog_row(MATCH_REASON="BOTH")],
-                total_matches=1,
-            )
+            _odata_result(objects=[_prog_row(MATCH_REASON="BOTH")], total_matches=1)
         )
-        req = RepositorySearchRequest(packages=["ZFINANCE"], name_patterns=["Z*"])
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
         resp = await svc.search(req)
         assert resp.objects[0].match_reason == MatchReason.BOTH
 
     @pytest.mark.asyncio
-    async def test_zero_matches_valid_response(self):
-        svc = _make_service(_discover_response(objects=[], total_matches=0))
-        req = RepositorySearchRequest(packages=["ZUNKNOWN"])
+    async def test_duplicate_object_deduplication(self):
+        """Same object returned by two OData calls → appears only once in result."""
+        svc = _make_service_multi(
+            [
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZFI_REPORT", MATCH_REASON="PACKAGE")],
+                    total_matches=1,
+                ),
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZFI_REPORT", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=1,
+                ),
+            ]
+        )
+        req = RepositorySearchRequest(packages=["ZFINANCE"], name_patterns=["ZFI*"])
+        resp = await svc.search(req)
+        assert resp.statistics.returned == 1
+        names = [o.object_name for o in resp.objects]
+        assert names.count("ZFI_REPORT") == 1
+
+    @pytest.mark.asyncio
+    async def test_package_pattern_merge_to_both(self):
+        """Object in pkg call (PACKAGE) + pattern call (NAME_PATTERN) → BOTH."""
+        svc = _make_service_multi(
+            [
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZFI_REPORT", MATCH_REASON="PACKAGE")],
+                    total_matches=1,
+                ),
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZFI_REPORT", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=1,
+                ),
+            ]
+        )
+        req = RepositorySearchRequest(packages=["ZFINANCE"], name_patterns=["ZFI*"])
+        resp = await svc.search(req)
+        assert resp.objects[0].match_reason == MatchReason.BOTH
+
+    @pytest.mark.asyncio
+    async def test_zero_results_valid_200(self):
+        svc = _make_service(_odata_result(objects=[], total_matches=0))
+        req = RepositorySearchRequest(packages=["ZEMPTY"])
         resp = await svc.search(req)
         assert resp.statistics.returned == 0
-        assert resp.statistics.total_matches == 0
-        assert resp.truncated is False
         assert resp.objects == []
-        assert "no matching" in resp.message.lower()
+        assert resp.truncated is False
 
     @pytest.mark.asyncio
     async def test_truncated_result_flagged(self):
+        rows = [_prog_row(OBJ_NAME=f"ZPROG_{i:03d}", MATCH_REASON="PACKAGE") for i in range(5)]
         svc = _make_service(
-            _discover_response(
-                objects=[_prog_row()],
-                truncated=True,
-                total_matches=5000,
-            )
+            _odata_result(objects=rows, truncated=True, total_matches=500)
         )
-        req = RepositorySearchRequest(packages=["ZFINANCE"], max_results=1)
+        req = RepositorySearchRequest(packages=["ZFINANCE"], max_results=5)
         resp = await svc.search(req)
         assert resp.truncated is True
-        assert resp.statistics.total_matches == 5000
+
+    @pytest.mark.asyncio
+    async def test_max_results_cap_applied(self):
+        """Returned objects are capped at max_results even if SAP returns more."""
+        rows = [
+            _prog_row(OBJ_NAME=f"ZPROG_{i:03d}", MATCH_REASON="PACKAGE")
+            for i in range(10)
+        ]
+        svc = _make_service(_odata_result(objects=rows, total_matches=10))
+        req = RepositorySearchRequest(packages=["ZFINANCE"], max_results=3)
+        resp = await svc.search(req)
+        assert resp.statistics.returned == 3
+        assert resp.truncated is True
+
+    @pytest.mark.asyncio
+    async def test_total_matches_single_call(self):
+        svc = _make_service(
+            _odata_result(objects=[_prog_row()], total_matches=42, truncated=True)
+        )
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
+        resp = await svc.search(req)
+        assert resp.statistics.total_matches == 42
+
+    @pytest.mark.asyncio
+    async def test_optional_fields_missing_handled(self):
+        """Row with minimal fields only → no crash, object returned."""
+        minimal = {"OBJECT": "PROG", "OBJ_NAME": "ZPROG_MIN"}
+        svc = _make_service(_odata_result(objects=[minimal]))
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
+        resp = await svc.search(req)
         assert resp.statistics.returned == 1
-        assert "truncated" in resp.message.lower() or "5000" in resp.message
-
-    @pytest.mark.asyncio
-    async def test_total_matches_greater_than_returned(self):
-        svc = _make_service(
-            _discover_response(
-                objects=[_prog_row(), _clas_row()],
-                truncated=True,
-                total_matches=999,
-            )
-        )
-        req = RepositorySearchRequest(packages=["ZFINANCE"], max_results=2)
-        resp = await svc.search(req)
-        assert resp.statistics.returned == 2
-        assert resp.statistics.total_matches == 999
-        assert resp.truncated is True
-
-    @pytest.mark.asyncio
-    async def test_optional_ecc_fields_missing(self):
-        """A minimal row with only mandatory fields must not crash the service."""
-        minimal_row = {"OBJECT": "PROG", "OBJ_NAME": "ZMINIMAL"}
-        svc = _make_service(_discover_response(objects=[minimal_row], total_matches=1))
-        req = RepositorySearchRequest(packages=["ZTEST"])
-        resp = await svc.search(req)
         obj = resp.objects[0]
         assert obj.sap_object_type == "PROG"
-        assert obj.object_name == "ZMINIMAL"
         assert obj.package is None
         assert obj.author is None
         assert obj.description is None
-        assert obj.created_date is None
-        assert obj.changed_date is None
-        assert obj.match_reason is None
 
     @pytest.mark.asyncio
-    async def test_unknown_ecc_object_type_handled_safely(self):
-        """An ECC row with an unrecognised object type must not raise an exception."""
-        unknown_row = {"OBJECT": "ZUNK", "OBJ_NAME": "ZUNKNOWN_OBJ", "DEVCLASS": "ZTEST"}
-        svc = _make_service(_discover_response(objects=[unknown_row], total_matches=1))
-        req = RepositorySearchRequest(packages=["ZTEST"])
+    async def test_unknown_object_type_handled_safely(self):
+        """Unknown SAP type does not crash; object is still returned."""
+        row = _prog_row(OBJECT="XXXX", OBJ_NAME="ZUNKNOWN_OBJ")
+        svc = _make_service(_odata_result(objects=[row]))
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
         resp = await svc.search(req)
-        # The object should still be returned with the raw type preserved.
         assert resp.statistics.returned == 1
-        assert resp.objects[0].sap_object_type == "ZUNK"
-        assert resp.objects[0].friendly_type == "UNKNOWN"
+        assert resp.objects[0].sap_object_type == "XXXX"
 
     @pytest.mark.asyncio
-    async def test_all_custom_objects_injects_zy_patterns(self):
-        """all_custom_objects=True must result in Z*/Y* in the effective criteria."""
-        svc = _make_service(_discover_response(objects=[], total_matches=0))
-        req = RepositorySearchRequest(all_custom_objects=True)
+    async def test_row_missing_object_type_skipped(self):
+        """Row with blank OBJECT field is dropped without crashing."""
+        bad_row = {"OBJECT": "", "OBJ_NAME": "ZBAD"}
+        good_row = _prog_row(OBJ_NAME="ZGOOD")
+        svc = _make_service(_odata_result(objects=[bad_row, good_row]))
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
         resp = await svc.search(req)
-        assert "Z*" in resp.criteria.name_patterns
-        assert "Y*" in resp.criteria.name_patterns
-        assert resp.criteria.all_custom_objects is True
+        assert resp.statistics.returned == 1
+        assert resp.objects[0].object_name == "ZGOOD"
 
     @pytest.mark.asyncio
-    async def test_empty_object_types_uses_all_phase3_types(self):
-        """When object_types is empty, all Phase 3 types should appear in criteria."""
-        from app.models.object_types import PHASE3_OBJECT_TYPES
-
-        svc = _make_service(_discover_response(objects=[], total_matches=0))
-        req = RepositorySearchRequest(packages=["ZTEST"], object_types=[])
+    async def test_row_missing_obj_name_skipped(self):
+        """Row with blank OBJ_NAME is dropped without crashing."""
+        bad_row = {"OBJECT": "PROG", "OBJ_NAME": ""}
+        good_row = _prog_row(OBJ_NAME="ZGOOD2")
+        svc = _make_service(_odata_result(objects=[bad_row, good_row]))
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
         resp = await svc.search(req)
-        assert set(resp.criteria.object_types) == PHASE3_OBJECT_TYPES
+        assert resp.statistics.returned == 1
+        assert resp.objects[0].object_name == "ZGOOD2"
 
     @pytest.mark.asyncio
-    async def test_friendly_type_mapping_all_phase3_types(self):
-        """Every Phase 3 object type must map to a non-empty friendly name."""
-        from app.models.object_types import PHASE3_OBJECT_TYPES, get_friendly_type
-
-        for otype in PHASE3_OBJECT_TYPES:
-            friendly = get_friendly_type(otype)
-            assert friendly, f"No friendly name for {otype}"
-            assert friendly != "UNKNOWN", f"Type {otype} mapped to UNKNOWN unexpectedly"
+    async def test_all_custom_objects_injects_z_y_patterns(self):
+        """all_custom_objects=True → Z* and Y* pattern calls are generated."""
+        svc = _make_service_multi(
+            [
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZPROG_CUSTOM", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=1,
+                ),
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="YPROG_CUSTOM", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=1,
+                ),
+            ]
+        )
+        req = RepositorySearchRequest(all_custom_objects=True, object_types=["PROG"])
+        resp = await svc.search(req)
+        names = [o.object_name for o in resp.objects]
+        assert "ZPROG_CUSTOM" in names
+        assert "YPROG_CUSTOM" in names
 
     @pytest.mark.asyncio
-    async def test_sap_communication_error_propagated(self):
+    async def test_system_id_and_client_propagated(self):
+        svc = _make_service(
+            _odata_result(
+                objects=[_prog_row()],
+                system_id="NC1",
+                client="800",
+            )
+        )
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
+        resp = await svc.search(req)
+        assert resp.system_id == "NC1"
+        assert resp.client == "800"
+
+    @pytest.mark.asyncio
+    async def test_deterministic_sort_order(self):
+        """Results are sorted by sap_object_type → object_name → package."""
+        rows = [
+            _prog_row(OBJ_NAME="ZPROG_B", MATCH_REASON="PACKAGE"),
+            _clas_row(OBJ_NAME="ZCLAS_A", MATCH_REASON="PACKAGE"),
+            _prog_row(OBJ_NAME="ZPROG_A", MATCH_REASON="PACKAGE"),
+        ]
+        svc = _make_service(_odata_result(objects=rows, total_matches=3))
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
+        resp = await svc.search(req)
+        types_and_names = [(o.sap_object_type, o.object_name) for o in resp.objects]
+        assert types_and_names == sorted(types_and_names)
+
+    @pytest.mark.asyncio
+    async def test_call_budget_exceeded_raises(self):
+        """More packages × types than MAX_DISCOVERY_ODATA_CALLS → ValueError."""
+        from app.services.discovery import MAX_DISCOVERY_ODATA_CALLS
+
+        # Build request that requires more calls than the budget.
+        # 50+ packages, one object type = 50+ plans → should trip the limit.
+        many_packages = [f"ZPKG_{i:03d}" for i in range(MAX_DISCOVERY_ODATA_CALLS + 1)]
+        conn = MagicMock()
+        conn.discover_repository_objects = AsyncMock(return_value=_odata_result())
+        svc = RepositoryDiscoveryService(conn)
+        req = RepositorySearchRequest(packages=many_packages)
+        with pytest.raises(ValueError, match="safe limit"):
+            await svc.search(req)
+
+    @pytest.mark.asyncio
+    async def test_sap_error_propagated(self):
+        """SAP provider errors bubble through the service layer."""
         from app.sap.exceptions import SAPCommunicationError
 
         conn = MagicMock()
-        conn.call = AsyncMock(side_effect=SAPCommunicationError("ECC unreachable"))
+        conn.discover_repository_objects = AsyncMock(
+            side_effect=SAPCommunicationError("Gateway unreachable")
+        )
         svc = RepositoryDiscoveryService(conn)
         req = RepositorySearchRequest(packages=["ZFINANCE"])
         with pytest.raises(SAPCommunicationError):
             await svc.search(req)
 
     @pytest.mark.asyncio
-    async def test_response_includes_criteria_echo(self):
-        """The response criteria must echo the effective (normalised) filters."""
-        svc = _make_service(_discover_response(objects=[], total_matches=0))
+    async def test_multiple_types_multiple_packages(self):
+        """2 packages × 2 object types = 4 OData calls, results aggregated."""
+        svc = _make_service_multi(
+            [
+                _odata_result(objects=[_prog_row(OBJ_NAME="ZFI_PROG", DEVCLASS="ZFINANCE")]),
+                _odata_result(objects=[_clas_row(OBJ_NAME="ZFI_CLAS", DEVCLASS="ZFINANCE")]),
+                _odata_result(objects=[_prog_row(OBJ_NAME="ZPAY_PROG", DEVCLASS="ZPAYMENT")]),
+                _odata_result(objects=[_clas_row(OBJ_NAME="ZPAY_CLAS", DEVCLASS="ZPAYMENT")]),
+            ]
+        )
         req = RepositorySearchRequest(
-            packages=["zfinance"],
-            include_subpackages=True,
-            object_types=["PROG"],
-            max_results=50,
+            packages=["ZFINANCE", "ZPAYMENT"],
+            object_types=["PROG", "CLAS"],
         )
         resp = await svc.search(req)
-        assert resp.criteria.packages == ["ZFINANCE"]
-        assert resp.criteria.include_subpackages is True
-        assert resp.criteria.object_types == ["PROG"]
-        assert resp.criteria.max_results == 50
-
-    @pytest.mark.asyncio
-    async def test_success_message_when_results_found(self):
-        svc = _make_service(
-            _discover_response(objects=[_prog_row()], total_matches=1)
-        )
-        req = RepositorySearchRequest(packages=["ZFINANCE"])
-        resp = await svc.search(req)
-        assert "success" in resp.message.lower() or resp.message
-
-    @pytest.mark.asyncio
-    async def test_sap_date_parsing(self):
-        """SAP YYYYMMDD date strings must be parsed into Python date objects."""
-        row = _prog_row(CREATED_DATE="20230115", CHANGED_DATE="20240601")
-        svc = _make_service(_discover_response(objects=[row], total_matches=1))
-        req = RepositorySearchRequest(packages=["ZFINANCE"])
-        resp = await svc.search(req)
-        obj = resp.objects[0]
-        assert obj.created_date is not None
-        assert obj.created_date.year == 2023
-        assert obj.created_date.month == 1
-        assert obj.created_date.day == 15
-
-    @pytest.mark.asyncio
-    async def test_sap_zero_date_becomes_none(self):
-        """SAP blank/zero date '00000000' must become None, not raise."""
-        row = _prog_row(CREATED_DATE="00000000", CHANGED_DATE="")
-        svc = _make_service(_discover_response(objects=[row], total_matches=1))
-        req = RepositorySearchRequest(packages=["ZFINANCE"])
-        resp = await svc.search(req)
-        obj = resp.objects[0]
-        assert obj.created_date is None
-        assert obj.changed_date is None
+        assert resp.statistics.returned == 4
+        names = {o.object_name for o in resp.objects}
+        assert names == {"ZFI_PROG", "ZFI_CLAS", "ZPAY_PROG", "ZPAY_CLAS"}

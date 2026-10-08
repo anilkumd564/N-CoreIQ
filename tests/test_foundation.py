@@ -32,10 +32,15 @@ def test_health_response_contains_expected_fields():
 
 
 def test_application_loads_in_local_mode():
-    """3. Application loads in local mode."""
+    """3. Application loads with a recognized connection mode (local or odata).
+
+    OData is now the preferred connection mode for ECC connectivity via SAP
+    Gateway.  The .env file may legitimately set SAP_CONNECTION_MODE=odata,
+    so this test accepts both 'local' and 'odata' as valid startup modes.
+    """
     settings = get_settings()
     assert settings.app_env == "local"
-    assert settings.sap_connection_mode == "local"
+    assert settings.sap_connection_mode in ("local", "odata")
 
 
 def test_repository_search_request_accepts_valid_input():
@@ -96,7 +101,21 @@ def test_application_startup_does_not_require_ecc_system():
 
 
 def test_unimplemented_sap_capability_fails_gracefully():
-    """8. Unimplemented SAP capability fails gracefully (no crash, no stack trace)."""
+    """8. Phase 3 repository search responds with a controlled status code.
+
+    Phase 3 fully implements POST /api/v1/repository/search, so a 501
+    (Not Implemented) is no longer the expected response.  Depending on
+    runtime configuration the endpoint will return one of:
+
+      200 -- SAP is reachable; objects found or zero results.
+      422 -- Service-layer validation error (e.g. unsupported type, budget
+             exceeded, or SAP returned a structured error mapped to ValueError).
+      503 -- SAP is configured but unreachable (network, TLS, timeout, auth).
+
+    The invariants that must ALWAYS hold regardless of SAP availability:
+      - No raw 500 with an unhandled stack trace.
+      - No actual credential value appears in the response body.
+    """
     payload = {
         "packages": ["ZFINANCE"],
         "include_subpackages": True,
@@ -105,29 +124,46 @@ def test_unimplemented_sap_capability_fails_gracefully():
         "max_results": 100,
     }
     response = client.post("/api/v1/repository/search", json=payload)
-    assert response.status_code == 501
+    # Phase 3 is implemented -- 501 is no longer a valid response for this input.
+    assert response.status_code in (200, 422, 503), (
+        f"Unexpected status {response.status_code}: {response.text}"
+    )
     body = response.json()
-    assert "detail" in body
+    serialized = json.dumps(body)
     # Must not leak credentials or raw tracebacks.
-    assert "password" not in body["detail"].lower()
-    assert "traceback" not in body["detail"].lower()
+    assert "traceback" not in serialized.lower()
+    settings = Settings()
+    if settings.sap_odata.password:
+        assert settings.sap_odata.password not in serialized
+    if settings.sap_local.password:
+        assert settings.sap_local.password not in serialized
 
 
 def test_sap_ping_does_not_crash_and_hides_credentials():
     """SAP ping must respond safely without crashing or exposing secrets.
 
-    With no SAP_LOCAL configuration present, Phase 2 returns a controlled
-    422 configuration error rather than a 200 placeholder. The response may
-    legitimately reference the "password" field name (e.g. "missing: ...,
-    password") when reporting incomplete configuration, but it must never
-    leak an actual credential value or a raw traceback.
+    Accepted outcomes depending on runtime configuration:
+      200 -- OData/RFC credentials are configured and SAP is reachable.
+      422 -- Required configuration is missing or invalid.
+      501 -- Connection mode not yet implemented (BTP placeholder).
+      503 -- SAP is configured but unreachable from this environment
+             (network error, TLS failure, timeout, OData connectivity
+             failure).
+
+    All outcomes are considered *controlled* responses.  The invariants are:
+      - No unhandled 500 with a raw stack trace.
+      - No actual credential value appears in the response body.
     """
     response = client.get("/api/v1/sap/ping")
-    assert response.status_code in (422, 501)
+    assert response.status_code in (200, 422, 501, 503), (
+        f"Unexpected status {response.status_code}: {response.text}"
+    )
     body = response.json()
     serialized = json.dumps(body)
     assert "traceback" not in serialized.lower()
-    # No actual secret value may ever appear - only the field name is allowed.
+    # No actual secret value may ever appear - only field names are allowed.
     settings = Settings()
     if settings.sap_local.password:
         assert settings.sap_local.password not in serialized
+    if settings.sap_odata.password:
+        assert settings.sap_odata.password not in serialized

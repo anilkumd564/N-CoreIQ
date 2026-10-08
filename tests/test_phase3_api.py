@@ -373,9 +373,16 @@ def test_health_response_has_expected_fields():
 
 
 def test_sap_ping_endpoint_still_exists():
-    """Ping must not return 404; 200 or 503 are both acceptable without ECC."""
+    """Ping must not return 404.
+
+    Acceptable responses without a live SAP system:
+      200  — provider succeeded (live or mocked)
+      422  — OData or RFC configuration is incomplete (expected in test env)
+      501  — RFC runtime not available
+      503  — SAP system unreachable / authentication failure
+    """
     resp = client.get("/api/v1/sap/ping")
-    assert resp.status_code in (200, 503, 501)
+    assert resp.status_code in (200, 422, 501, 503)
 
 
 def test_docs_endpoint_reachable():

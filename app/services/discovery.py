@@ -1,17 +1,19 @@
 """Phase 3 Repository Discovery Service.
 
-Implements SAP repository object discovery through Z_MCP_REPO_PACKAGES and
-Z_MCP_REPO_DISCOVER.  All SAP RFC interactions are mediated through the
-SapConnectionProvider abstraction; no RFC-specific logic lives in this file.
+Implements SAP repository object discovery through OData V2 (RepositoryObjectsSet)
+and Z_MCP_REPO_PACKAGES (RFC).  All SAP interactions are mediated through the
+SapConnectionProvider abstraction; no transport-specific logic lives here.
 
 Architecture:
     REST API
        ↓
     RepositoryDiscoveryService
        ↓
-    SapConnectionProvider (RFC allow-list enforced)
+    SapConnectionProvider.discover_repository_objects()  (OData V2)
+    SapConnectionProvider.call("Z_MCP_REPO_PACKAGES")   (RFC – package resolution)
        ↓
-    Z_MCP_REPO_PACKAGES / Z_MCP_REPO_DISCOVER
+    ZNCOREIQ_REPO_SRV / RepositoryObjectsSet
+    Z_MCP_REPO_PACKAGES
        ↓
     SAP ECC
 """
@@ -20,13 +22,14 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from app.models.object_types import PHASE3_OBJECT_TYPES, get_friendly_type
 from app.models.repository import MatchReason, PackageInfo, PackageResolutionResult, RepositoryObject
 from app.models.requests import RepositorySearchRequest
 from app.models.results import RepositorySearchResponse, SearchCriteria, SearchStatistics
-from app.sap.connection.base import SapConnectionProvider
+from app.sap.connection.base import ODataDiscoveryResult, SapConnectionProvider
 
 logger = logging.getLogger("app.services.discovery")
 
@@ -36,15 +39,45 @@ _CUSTOM_NAMESPACE_PATTERNS: list[str] = ["Z*", "Y*"]
 # SAP boolean token used in RFC exports (character 'X' = true, '' = false).
 _SAP_TRUE = "X"
 
+# Maximum number of OData calls the service will generate for a single search.
+# Prevents accidental fan-out explosion from large multi-value inputs.
+MAX_DISCOVERY_ODATA_CALLS = 50
+
+
+# ---------------------------------------------------------------------------
+# Internal search-plan dataclass
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _DiscoveryPlan:
+    """Represents one controlled OData RepositoryObjectsSet call."""
+
+    root_package: str | None
+    name_pattern: str | None
+    object_type: str | None  # None = no type filter (SAP returns all types)
+    include_subpackages: bool
+    max_results: int
+
+    @property
+    def source(self) -> str:
+        """Return 'PACKAGE' if this is a package-based call, else 'NAME_PATTERN'."""
+        return "PACKAGE" if self.root_package else "NAME_PATTERN"
+
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+
 
 class RepositoryDiscoveryService:
-    """Discovers SAP custom repository objects via controlled ECC RFCs.
+    """Discovers SAP custom repository objects via OData V2 (RepositoryObjectsSet).
 
     Design principles:
     * No FastAPI / HTTP logic.  The service returns domain objects.
-    * No N+1 RFC calls per discovered object.
     * RFC exceptions propagate as-is; the route layer maps them to HTTP codes.
     * The request is already validated/normalised by RepositorySearchRequest.
+    * Multi-value fan-out is handled here; the provider issues one OData call.
     """
 
     def __init__(self, connection: SapConnectionProvider) -> None:
@@ -65,13 +98,22 @@ class RepositoryDiscoveryService:
         """
         start = time.monotonic()
 
-        # Determine effective filters.
+        # ---- Determine effective filters --------------------------------
+
         effective_packages = list(request.packages)
         effective_patterns = list(request.name_patterns)
-        effective_types = list(request.object_types) if request.object_types else sorted(PHASE3_OBJECT_TYPES)
 
         if request.all_custom_objects and not effective_patterns:
             effective_patterns = list(_CUSTOM_NAMESPACE_PATTERNS)
+
+        # Specific types requested, or None = no type filter per OData call.
+        # When object_types is empty we still echo all Phase 3 types in criteria.
+        specific_types: list[str] = list(request.object_types) if request.object_types else []
+        effective_types_for_criteria: list[str] = specific_types if specific_types else sorted(PHASE3_OBJECT_TYPES)
+
+        # For plan generation: send one type per call when types are specified,
+        # or send None (no type clause) when no restriction is requested.
+        plan_types: list[str | None] = specific_types if specific_types else [None]
 
         logger.info(
             "repository_search_start",
@@ -79,48 +121,115 @@ class RepositoryDiscoveryService:
                 "operation": "repository_search",
                 "package_count": len(effective_packages),
                 "pattern_count": len(effective_patterns),
-                "object_type_count": len(effective_types),
+                "object_type_count": len(specific_types),
                 "max_results": request.max_results,
                 "include_subpackages": request.include_subpackages,
                 "all_custom_objects": request.all_custom_objects,
             },
         )
 
-        # Build the RFC input tables.
-        it_packages = [{"DEVCLASS": pkg} for pkg in effective_packages]
-        it_name_patterns = [{"PATTERN": pat} for pat in effective_patterns]
-        it_object_types = [{"OBJECT": otype} for otype in effective_types]
+        # ---- Build search plans -----------------------------------------
 
-        # Call Z_MCP_REPO_DISCOVER.
-        raw = await self._connection.call(
-            "Z_MCP_REPO_DISCOVER",
-            IV_ALL_CUSTOM_OBJECTS=_SAP_TRUE if request.all_custom_objects else "",
-            IV_INCLUDE_SUBPACKAGES=_SAP_TRUE if request.include_subpackages else "",
-            IV_MAX_RESULTS=request.max_results,
-            IT_PACKAGES=it_packages,
-            IT_NAME_PATTERNS=it_name_patterns,
-            IT_OBJECT_TYPES=it_object_types,
+        plans = _build_plans(
+            packages=effective_packages,
+            patterns=effective_patterns,
+            plan_types=plan_types,
+            include_subpackages=request.include_subpackages,
+            max_results=request.max_results,
         )
 
-        # Parse RFC output.
-        truncated = bool(raw.get("EV_TRUNCATED") == _SAP_TRUE)
-        total_matches = int(raw.get("EV_TOTAL_MATCHES") or 0)
-        message = str(raw.get("EV_MESSAGE") or "").strip() or None
-        et_objects: list[dict[str, Any]] = raw.get("ET_OBJECTS") or []
+        logger.info(
+            "repository_search_plan_generated",
+            extra={
+                "operation": "repository_search",
+                "odata_call_count": len(plans),
+            },
+        )
 
-        # Normalise each returned SAP row into a RepositoryObject.
-        objects: list[RepositoryObject] = []
-        for row in et_objects:
-            obj = self._normalize_object(row)
-            if obj is not None:
-                objects.append(obj)
+        # ---- Execute plans ----------------------------------------------
 
-        # ECC may report total_matches without including them all in ET_OBJECTS.
-        # Use the row count as the canonical "returned" value.
+        seen: dict[tuple[str, str], RepositoryObject] = {}
+        any_truncated = False
+        any_total_matches: int | None = None
+        system_id: str | None = None
+        client: str | None = None
+        messages: list[str] = []
+
+        for plan in plans:
+            result: ODataDiscoveryResult = await self._connection.discover_repository_objects(
+                root_package=plan.root_package,
+                include_subpackages=plan.include_subpackages,
+                name_pattern=plan.name_pattern,
+                object_type=plan.object_type,
+                max_results=plan.max_results,
+            )
+
+            if result.truncated:
+                any_truncated = True
+
+            # Collect total_matches from first populated OData call.
+            # We avoid summing across calls because results may overlap.
+            if result.total_matches is not None and any_total_matches is None:
+                any_total_matches = result.total_matches
+
+            if result.system_id and not system_id:
+                system_id = result.system_id
+            if result.client and not client:
+                client = result.client
+            if result.message and result.message not in messages:
+                messages.append(result.message)
+
+            # ---- Normalize and deduplicate rows -------------------------
+            for row in result.rows:
+                obj = self._normalize_object(row)
+                if obj is None:
+                    continue
+
+                key = (obj.sap_object_type, obj.object_name)
+
+                if key not in seen:
+                    seen[key] = obj
+                else:
+                    # Object already found via another call — merge match reason.
+                    existing = seen[key]
+                    existing.match_reason = _merge_match_reason(
+                        existing.match_reason, obj.match_reason
+                    )
+
+        # ---- Aggregate results ------------------------------------------
+
+        objects = list(seen.values())
+
+        # Sort deterministically: type → name → package.
+        objects.sort(
+            key=lambda o: (
+                o.sap_object_type or "",
+                o.object_name or "",
+                o.package or "",
+            )
+        )
+
+        # Apply public max_results cap.
+        if len(objects) > request.max_results:
+            objects = objects[: request.max_results]
+            any_truncated = True
+
         returned = len(objects)
 
-        # When ECC does not populate EV_TOTAL_MATCHES, infer from returned rows.
-        if total_matches == 0 and returned > 0:
+        # When we have multiple OData calls the individual total_matches
+        # figures may overlap (same object in package + pattern call), so
+        # we only use the value from a single-call result if it is safe to
+        # do so; otherwise null signals "undetermined".
+        total_matches: int | None
+        if len(plans) == 1:
+            total_matches = any_total_matches if any_total_matches is not None else returned
+        else:
+            # Multi-call: totals can overlap; trust returned count only.
+            total_matches = None if any_truncated else returned
+
+        # When ECC did not return total_matches and there is no truncation,
+        # the returned count is exact.
+        if total_matches is None and not any_truncated:
             total_matches = returned
 
         elapsed = time.monotonic() - start
@@ -131,30 +240,27 @@ class RepositoryDiscoveryService:
                 "operation": "repository_search",
                 "returned": returned,
                 "total_matches": total_matches,
-                "truncated": truncated,
+                "truncated": any_truncated,
+                "odata_calls": len(plans),
                 "duration_ms": round(elapsed * 1000),
             },
         )
 
-        if not message:
-            if returned == 0:
-                message = "No matching repository objects were found."
-            elif truncated:
-                message = (
-                    f"Discovery completed. Results truncated at {request.max_results}; "
-                    f"ECC reports {total_matches} total matches."
-                )
-            else:
-                message = "Discovery completed successfully."
+        # ---- Build message ----------------------------------------------
 
-        # Determine system_id / client from first object if ECC didn't set them
-        # at the export variable level.
-        system_id: str | None = str(raw.get("EV_SYSTEM_ID") or "").strip() or None
-        client: str | None = str(raw.get("EV_CLIENT") or "").strip() or None
-        if not system_id and objects:
-            system_id = objects[0].system_id
-        if not client and objects:
-            client = objects[0].client
+        sap_message = " | ".join(messages) if messages else None
+        if sap_message:
+            message = sap_message
+        elif returned == 0:
+            message = "No matching repository objects were found."
+        elif any_truncated:
+            tm_str = str(total_matches) if total_matches is not None else "unknown"
+            message = (
+                f"Discovery completed. Results truncated at {request.max_results}; "
+                f"ECC reports {tm_str} total matches."
+            )
+        else:
+            message = "Discovery completed successfully."
 
         return RepositorySearchResponse(
             system_id=system_id,
@@ -163,7 +269,7 @@ class RepositoryDiscoveryService:
                 packages=effective_packages,
                 include_subpackages=request.include_subpackages,
                 name_patterns=effective_patterns,
-                object_types=effective_types,
+                object_types=effective_types_for_criteria,
                 all_custom_objects=request.all_custom_objects,
                 max_results=request.max_results,
             ),
@@ -171,13 +277,13 @@ class RepositoryDiscoveryService:
                 total_matches=total_matches,
                 returned=returned,
             ),
-            truncated=truncated,
+            truncated=any_truncated,
             message=message,
             objects=objects,
         )
 
     # ------------------------------------------------------------------
-    # Package resolution (Z_MCP_REPO_PACKAGES)
+    # Package resolution (Z_MCP_REPO_PACKAGES via RFC)
     # ------------------------------------------------------------------
 
     async def resolve_packages(
@@ -226,6 +332,7 @@ class RepositoryDiscoveryService:
             )
 
         return PackageResolutionResult(
+            root_package=package,
             packages=packages,
             truncated=truncated,
             message=message,
@@ -236,12 +343,15 @@ class RepositoryDiscoveryService:
     # ------------------------------------------------------------------
 
     def _normalize_object(self, row: dict[str, Any]) -> RepositoryObject | None:
-        """Convert a raw ECC ET_OBJECTS row into a RepositoryObject.
+        """Convert a raw RFC-style row into a RepositoryObject.
+
+        Rows arrive from ODataDiscoveryResult.rows, which already maps OData
+        field names to RFC-style keys (OBJECT, OBJ_NAME, DEVCLASS, …) inside
+        _parse_repository_objects().
 
         Returns None for rows that are missing mandatory fields so a single
         bad row does not abort the entire result set.
         """
-        # Mandatory fields from TADIR.
         sap_type = str(row.get("OBJECT") or "").strip().upper()
         obj_name = str(row.get("OBJ_NAME") or "").strip().upper()
 
@@ -254,7 +364,6 @@ class RepositoryDiscoveryService:
 
         friendly = get_friendly_type(sap_type)
 
-        # Optional TADIR fields – treated defensively.
         pgmid = str(row.get("PGMID") or "").strip().upper() or None
         package = str(row.get("DEVCLASS") or "").strip().upper() or None
         author = str(row.get("AUTHOR") or "").strip() or None
@@ -262,16 +371,13 @@ class RepositoryDiscoveryService:
         active_status = str(row.get("ACTIVE_STATUS") or "").strip() or None
         warning = str(row.get("WARNING") or "").strip() or None
 
-        # System context (optional – may be absent in Phase 3 ECC response).
         system_id = str(row.get("SYSTEM_ID") or "").strip() or None
         client = str(row.get("CLIENT") or "").strip() or None
 
-        # Date fields – parse defensively; blank SAP dates (00000000) become None.
         created_date = _parse_sap_date(row.get("CREATED_DATE"))
         changed_date = _parse_sap_date(row.get("CHANGED_DATE"))
         changed_by = str(row.get("CHANGED_BY") or "").strip() or None
 
-        # Match reason – normalise ECC string to enum.
         match_reason = _parse_match_reason(row.get("MATCH_REASON"))
 
         return RepositoryObject(
@@ -294,39 +400,121 @@ class RepositoryDiscoveryService:
 
 
 # ---------------------------------------------------------------------------
-# Private utility functions
+# Private helpers
 # ---------------------------------------------------------------------------
 
 
-def _parse_sap_date(value: Any) -> "date | None":
-    """Parse an ECC date value into a Python date, returning None for blanks.
+def _build_plans(
+    packages: list[str],
+    patterns: list[str],
+    plan_types: list[str | None],
+    include_subpackages: bool,
+    max_results: int,
+) -> list[_DiscoveryPlan]:
+    """Generate the minimal set of OData RepositoryObjectsSet call plans.
 
-    SAP stores dates as 'YYYYMMDD' strings.  Blank or zero dates ('00000000'
-    or empty string) are normalised to None.
+    For each requested object type (or None for no-type-filter), emit one plan
+    per package and one plan per pattern.  Duplicate combinations are skipped.
+
+    Raises:
+        ValueError: if the number of generated plans exceeds MAX_DISCOVERY_ODATA_CALLS.
     """
-    from datetime import date
+    plans: list[_DiscoveryPlan] = []
+    seen_plans: set[tuple] = set()
 
-    if not value:
+    for otype in plan_types:
+        for pkg in packages:
+            key = ("PKG", pkg, otype)
+            if key not in seen_plans:
+                seen_plans.add(key)
+                plans.append(
+                    _DiscoveryPlan(
+                        root_package=pkg,
+                        name_pattern=None,
+                        object_type=otype,
+                        include_subpackages=include_subpackages,
+                        max_results=max_results,
+                    )
+                )
+        for pat in patterns:
+            key = ("PAT", pat, otype)
+            if key not in seen_plans:
+                seen_plans.add(key)
+                plans.append(
+                    _DiscoveryPlan(
+                        root_package=None,
+                        name_pattern=pat,
+                        object_type=otype,
+                        include_subpackages=include_subpackages,
+                        max_results=max_results,
+                    )
+                )
+
+    if len(plans) > MAX_DISCOVERY_ODATA_CALLS:
+        raise ValueError(
+            f"The requested search would generate {len(plans)} OData calls, "
+            f"which exceeds the safe limit of {MAX_DISCOVERY_ODATA_CALLS}. "
+            "Reduce the number of packages, patterns, or object types."
+        )
+
+    return plans
+
+
+def _merge_match_reason(
+    existing: MatchReason | None,
+    incoming: MatchReason | None,
+) -> MatchReason | None:
+    """Merge two MatchReason values when the same object appears in multiple calls.
+
+    Rules:
+    * BOTH always wins — never downgrade it.
+    * PACKAGE + NAME_PATTERN (or vice-versa) → BOTH.
+    * Same value → keep it.
+    * One is None → keep the non-None value.
+    """
+    if existing == MatchReason.BOTH or incoming == MatchReason.BOTH:
+        return MatchReason.BOTH
+    if existing is None:
+        return incoming
+    if incoming is None:
+        return existing
+    if existing != incoming:
+        return MatchReason.BOTH
+    return existing
+
+
+def _parse_match_reason(raw: Any) -> MatchReason | None:
+    """Parse a raw SAP MATCH_REASON field into a MatchReason enum value."""
+    if raw is None:
         return None
-    s = str(value).strip()
-    if not s or s == "00000000":
+    value = str(raw).strip().upper()
+    if value == "PACKAGE":
+        return MatchReason.PACKAGE
+    if value == "NAME_PATTERN":
+        return MatchReason.NAME_PATTERN
+    if value == "BOTH":
+        return MatchReason.BOTH
+    return None
+
+
+def _parse_sap_date(raw: Any):
+    """Parse a SAP YYYYMMDD date string into a Python date, or return None.
+
+    SAP zero dates ('00000000', blank) become None.
+    Malformed values are silently discarded.
+    """
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    if not value or value == "00000000":
         return None
     try:
-        return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+        from datetime import date
+
+        return date(int(value[:4]), int(value[4:6]), int(value[6:8]))
     except (ValueError, IndexError):
-        return None
-
-
-def _parse_match_reason(value: Any) -> MatchReason | None:
-    """Normalise an ECC MATCH_REASON string to the MatchReason enum.
-
-    ECC may return values such as 'PACKAGE', 'NAME_PATTERN', 'BOTH',
-    or blank.  Unknown values are silently returned as None.
-    """
-    if not value:
-        return None
-    s = str(value).strip().upper()
-    try:
-        return MatchReason(s)
-    except ValueError:
+        logger.warning(
+            "repository_object_invalid_date",
+            extra={"operation": "parse_sap_date", "value": repr(raw)},
+        )
         return None

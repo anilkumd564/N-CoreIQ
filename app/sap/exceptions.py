@@ -1,4 +1,4 @@
-"""Domain exceptions for SAP connectivity (Phase 2).
+"""Domain exceptions for SAP connectivity (Phase 2) and repository operations (Phase 3).
 
 These exceptions are intentionally free of secrets. Never include
 SAP passwords, raw RFC payloads, or stack traces in exception messages.
@@ -70,3 +70,56 @@ class SAPProviderNotImplementedError(SAPError):
 
     Maps to HTTP 501.
     """
+
+
+# ---------------------------------------------------------------------------
+# OData-specific exceptions (Phase 2 — OData transport layer)
+# ---------------------------------------------------------------------------
+
+
+class SAPTLSError(SAPConnectionError):
+    """Raised when TLS/HTTPS certificate validation fails against the SAP Gateway.
+
+    Subclasses SAPConnectionError; maps to HTTP 503.
+    Callers should advise the user to configure SAP_ODATA__CA_BUNDLE if the
+    SAP system uses an internal corporate CA.
+    """
+
+
+class SAPTimeoutError(SAPConnectionError):
+    """Raised when an HTTP request to the SAP Gateway times out.
+
+    Subclasses SAPConnectionError; maps to HTTP 503.
+    """
+
+
+class SAPGatewayError(SAPCommunicationError):
+    """Raised when the SAP Gateway returns an HTTP 5xx server error.
+
+    Subclasses SAPCommunicationError; maps to HTTP 503.
+    """
+
+
+class SAPResponseParseError(SAPCommunicationError):
+    """Raised when the SAP OData response cannot be parsed or does not
+    conform to the expected OData V2 envelope structure.
+
+    Subclasses SAPCommunicationError; maps to HTTP 503.
+    """
+
+
+# ---------------------------------------------------------------------------
+# Repository domain exceptions (Phase 3 — package resolution)
+# ---------------------------------------------------------------------------
+
+
+class RepositoryPackageNotFoundError(SAPError):
+    """Raised when PackagesSet returns an empty result set for the requested package.
+
+    Indicates the package does not exist in the SAP system (or the calling
+    user does not have visibility of it).  Maps to HTTP 404.
+    """
+
+    def __init__(self, package: str) -> None:
+        self.package = package
+        super().__init__(f"Package '{package}' was not found.")

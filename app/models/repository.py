@@ -177,17 +177,21 @@ class RepositoryObject(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Package resolution models
+# Package resolution models (Phase 3 — OData PackagesSet)
 # ---------------------------------------------------------------------------
 
 
-class PackageInfo(BaseModel):
-    """A single SAP development package returned by Z_MCP_REPO_PACKAGES."""
+class RepositoryPackage(BaseModel):
+    """A single SAP development package returned by PackagesSet (OData).
 
-    package: str = Field(description="SAP package name.")
+    Maps the OData V2 fields from ZNCOREIQ_REPO_SRV/PackagesSet to
+    normalized Python names.
+    """
+
+    package: str = Field(description="SAP package name (e.g. 'ZNCOREIQ').")
     parent_package: str | None = Field(
         default=None,
-        description="Parent package name (None for root packages).",
+        description="Parent package name; None or empty string for root packages.",
     )
     description: str | None = Field(
         default=None,
@@ -199,9 +203,45 @@ class PackageInfo(BaseModel):
     )
 
 
-class PackageResolutionResult(BaseModel):
-    """Result of a Z_MCP_REPO_PACKAGES call."""
+# Backward-compatible alias — existing code that imports PackageInfo continues to work.
+PackageInfo = RepositoryPackage
 
-    packages: list[PackageInfo] = Field(default_factory=list)
-    truncated: bool = False
-    message: str | None = None
+
+class PackageResolutionResult(BaseModel):
+    """Normalized result of a PackagesSet OData call.
+
+    Returned by ODataSAPConnectionProvider.get_packages() and surfaced
+    through RepositoryService.resolve_packages() to the REST API.
+    """
+
+    system_id: str | None = Field(
+        default=None,
+        description="SAP system ID (SID) of the source ECC system.",
+    )
+    client: str | None = Field(
+        default=None,
+        description="SAP client used for the package resolution call.",
+    )
+    root_package: str = Field(
+        description="The root package name that was requested.",
+    )
+    include_subpackages: bool = Field(
+        default=False,
+        description="Whether subpackage resolution was requested.",
+    )
+    max_depth: int = Field(
+        default=20,
+        description="Maximum recursion depth that was applied.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "True when SAP reported that the result set was truncated "
+            "due to max_depth or an internal SAP limit."
+        ),
+    )
+    message: str | None = Field(
+        default=None,
+        description="Human-readable status or warning message from SAP.",
+    )
+    packages: list[RepositoryPackage] = Field(default_factory=list)
