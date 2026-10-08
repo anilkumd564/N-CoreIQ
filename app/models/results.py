@@ -14,10 +14,19 @@ class HealthResult(BaseModel):
 
 
 class ConnectionTestResult(BaseModel):
-    connected: bool
-    mode: str
-    system: str | None = None
+    status: str
+    connection_mode: str
+    system_id: str | None = None
+    client: str | None = None
+    sap_release: str | None = None
+    timestamp: str | None = None
+    ping_method: str | None = None
     message: str
+
+    @property
+    def connected(self) -> bool:
+        """Backward-compatible convenience flag for callers/tests."""
+        return self.status == "connected"
 
 
 class SearchResult(BaseModel):

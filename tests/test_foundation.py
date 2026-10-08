@@ -64,16 +64,27 @@ def test_repository_search_request_rejects_invalid_input():
 
 
 def test_configuration_serialization_does_not_expose_secrets():
-    """6. Application does not expose secrets through configuration serialization."""
+    """6. Application does not expose secrets through configuration serialization.
+
+    The live `Settings` object may legitimately hold a real SAP password in
+    memory (required to perform RFC calls), but any serialization of that
+    configuration - model_dump(), repr(), str() - must redact it. This test
+    verifies redaction holds even when a real credential is configured.
+    """
     settings = Settings()
+    real_password = settings.sap_local.password
+
     dumped = settings.model_dump()
     serialized = json.dumps(dumped, default=str)
 
-    # SAP credential fields must either be empty/None or absent from output.
-    assert settings.sap_local.password in (None, "")
-    assert settings.sap_local.user in (None, "")
-    # No literal password-like values should ever be present in the serialized form.
-    assert "password" not in serialized.lower() or settings.sap_local.password in (None, "")
+    if real_password:
+        # The real credential must never appear in any serialized form.
+        assert real_password not in serialized
+        assert real_password not in repr(settings.sap_local)
+        assert real_password not in str(settings.sap_local)
+        assert dumped["sap_local"]["password"] == "***"
+    else:
+        assert dumped["sap_local"]["password"] in (None, "")
 
 
 def test_application_startup_does_not_require_ecc_system():
@@ -103,10 +114,20 @@ def test_unimplemented_sap_capability_fails_gracefully():
 
 
 def test_sap_ping_does_not_crash_and_hides_credentials():
-    """SAP ping must respond safely without crashing or exposing secrets."""
+    """SAP ping must respond safely without crashing or exposing secrets.
+
+    With no SAP_LOCAL configuration present, Phase 2 returns a controlled
+    422 configuration error rather than a 200 placeholder. The response may
+    legitimately reference the "password" field name (e.g. "missing: ...,
+    password") when reporting incomplete configuration, but it must never
+    leak an actual credential value or a raw traceback.
+    """
     response = client.get("/api/v1/sap/ping")
-    assert response.status_code == 200
+    assert response.status_code in (422, 501)
     body = response.json()
-    assert body["connected"] is False
     serialized = json.dumps(body)
-    assert "password" not in serialized.lower()
+    assert "traceback" not in serialized.lower()
+    # No actual secret value may ever appear - only the field name is allowed.
+    settings = Settings()
+    if settings.sap_local.password:
+        assert settings.sap_local.password not in serialized

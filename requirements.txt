@@ -4,3 +4,12 @@ pydantic>=2.9,<3.0
 pydantic-settings>=2.5,<3.0
 httpx>=0.27,<1.0
 pytest>=8.3,<9.0
+pytest-asyncio>=0.24,<1.0
+
+# PyRFC (SAP NetWeaver RFC SDK adapter) is intentionally NOT listed here.
+# It requires the proprietary SAP NetWeaver RFC SDK native libraries to be
+# installed separately on the host (never bundled in this repository).
+# Install it manually in environments that need real local SAP connectivity:
+#   pip install pyrfc
+# The application and test suite run fully without it; missing PyRFC is
+# detected and reported as a controlled error (see app/sap/rfc_runtime.py).

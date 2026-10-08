@@ -9,3 +9,13 @@ exports/
 
 # graphify-axet
 .graphify/
+
+# Local Python runtime/binary artifacts (not part of project source)
+python311/
+py37embed/
+python379_embed.zip
+python312.exe
+get-pip.py
+pyrfc_meta.json
+pyrfc_pypi.json
+SAP_Repository_Intelligence_Layer_v0.1.zip
