@@ -9,6 +9,7 @@ from app.sap.allowlist import ensure_allowed
 
 if TYPE_CHECKING:
     from app.models.repository import PackageResolutionResult
+    from app.models.phase4 import RepositoryObjectMetadata, RepositoryObjectSource
 
 
 # ---------------------------------------------------------------------------
@@ -140,4 +141,73 @@ class SapConnectionProvider(ABC):
         raise SAPProviderNotImplementedError(
             f"{type(self).__name__} does not support repository object discovery via OData. "
             "Configure SAP_CONNECTION_MODE=odata to enable RepositoryObjectsSet."
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 4 — Object metadata / source (OData ObjectMetadataSet / SourceLinesSet)
+    # ------------------------------------------------------------------
+
+    async def get_object_metadata(
+        self,
+        object_type: str,
+        object_name: str,
+    ) -> "RepositoryObjectMetadata":
+        """Retrieve technical metadata for a single SAP repository object.
+
+        Calls ObjectMetadataSet on ZNCOREIQ_REPO_SRV with a controlled
+        OData $filter for the given object_type and object_name.
+
+        Default implementation raises SAPProviderNotImplementedError.
+        OData providers must override this method.
+
+        Args:
+            object_type: Normalised SAP object type (e.g. ``PROG``).
+            object_name: Normalised SAP object name (e.g. ``ZMY_PROGRAM``).
+
+        Returns:
+            RepositoryObjectMetadata with all available fields populated.
+
+        Raises:
+            RepositoryObjectNotFoundError: if SAP reports Found=false.
+            SAPProviderNotImplementedError: if not overridden.
+        """
+        from app.sap.exceptions import SAPProviderNotImplementedError
+
+        raise SAPProviderNotImplementedError(
+            f"{type(self).__name__} does not support object metadata retrieval via OData. "
+            "Configure SAP_CONNECTION_MODE=odata to enable ObjectMetadataSet."
+        )
+
+    async def get_object_source(
+        self,
+        object_type: str,
+        object_name: str,
+        max_lines: int = 5000,
+    ) -> "RepositoryObjectSource":
+        """Retrieve source or structured technical definition for one SAP repository object.
+
+        Calls SourceLinesSet on ZNCOREIQ_REPO_SRV with a controlled
+        OData $filter for object_type, object_name, and MaxLines.
+
+        Default implementation raises SAPProviderNotImplementedError.
+        OData providers must override this method.
+
+        Args:
+            object_type: Normalised SAP object type (e.g. ``PROG``).
+            object_name: Normalised SAP object name (e.g. ``ZMY_PROGRAM``).
+            max_lines:   Maximum number of source lines to return (1–20000).
+
+        Returns:
+            RepositoryObjectSource with components and ordered source lines.
+
+        Raises:
+            RepositoryObjectNotFoundError: if SAP reports Found=false.
+            RepositorySourceDataIntegrityError: if conflicting line numbers detected.
+            SAPProviderNotImplementedError: if not overridden.
+        """
+        from app.sap.exceptions import SAPProviderNotImplementedError
+
+        raise SAPProviderNotImplementedError(
+            f"{type(self).__name__} does not support source extraction via OData. "
+            "Configure SAP_CONNECTION_MODE=odata to enable SourceLinesSet."
         )

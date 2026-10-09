@@ -123,3 +123,66 @@ class RepositoryPackageNotFoundError(SAPError):
     def __init__(self, package: str) -> None:
         self.package = package
         super().__init__(f"Package '{package}' was not found.")
+
+
+# ---------------------------------------------------------------------------
+# Repository domain exceptions (Phase 4 — object metadata / source)
+# ---------------------------------------------------------------------------
+
+
+class RepositoryObjectNotFoundError(SAPError):
+    """Raised when ObjectMetadataSet or SourceLinesSet reports that the
+    requested SAP repository object does not exist (Found=false or empty result).
+
+    Maps to HTTP 404.
+    """
+
+    def __init__(self, object_type: str, object_name: str) -> None:
+        self.object_type = object_type
+        self.object_name = object_name
+        super().__init__(
+            f"Repository object {object_type}/{object_name} was not found."
+        )
+
+
+class RepositoryObjectTypeNotSupportedError(SAPError, ValueError):
+    """Raised when the caller supplies an object type that is outside the
+    Phase 4 supported-type set.
+
+    Inherits from both SAPError and ValueError so that:
+      - Route handlers can catch it as a specific domain exception.
+      - Service-level callers that expect ValueError also catch it.
+
+    Maps to HTTP 422.
+    """
+
+    def __init__(self, object_type: str, supported: frozenset[str]) -> None:
+        self.object_type = object_type
+        self.supported = supported
+        super().__init__(
+            f"Unsupported object type '{object_type}' for metadata/source extraction. "
+            f"Phase 4 supported types: {sorted(supported)}"
+        )
+
+
+class RepositorySourceDataIntegrityError(SAPError):
+    """Raised when SourceLinesSet returns conflicting line numbers within the
+    same component (same component_type + component_name + line_no but
+    different source_line values).
+
+    Maps to HTTP 503 (upstream data integrity failure).
+    """
+
+    def __init__(
+        self,
+        component_type: str,
+        component_name: str,
+        line_no: int,
+    ) -> None:
+        self.component_type = component_type
+        self.component_name = component_name
+        self.line_no = line_no
+        super().__init__(
+            f"Source data integrity error: conflicting source lines for "
+            f"component {component_type}/{component_name} at line {line_no}."
+        )

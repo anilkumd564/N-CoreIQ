@@ -1,13 +1,14 @@
 # N-CoreIQ — SAP Repository Intelligence Layer
 
-Version 0.3.0 — BTP-ready, read-only SAP ECC custom repository discovery
-platform.
+Version 0.4.0 — BTP-ready, read-only SAP ECC custom repository discovery and
+object-level metadata/source extraction platform.
 
 **Current scope: Phase 1 (Application Foundation) + Phase 2 (SAP ECC
 Connectivity via SAP Gateway OData V2) + Phase 3 (SAP Repository Discovery via
-RepositoryObjectsSet OData V2).**
-Source extraction, export, dependency analysis, Clean Core / S/4 analysis, and
-further MCP tooling are later phases and are intentionally not implemented yet.
+RepositoryObjectsSet OData V2) + Phase 4 (Object Metadata & Source Extraction
+via ObjectMetadataSet / SourceLinesSet OData V2).**
+Export, dependency analysis, Clean Core / S/4 analysis, and further MCP tooling
+are later phases and are intentionally not implemented yet.
 
 ## Current capabilities
 
@@ -26,22 +27,32 @@ further MCP tooling are later phases and are intentionally not implemented yet.
 - **Phase 3:** `POST /api/v1/repository/search` — custom repository object
   discovery via `RepositoryObjectsSet` (OData V2) with package resolution via
   `Z_MCP_REPO_PACKAGES` (RFC)
+- **Phase 4:** `GET /api/v1/repository/objects/{type}/{name}/metadata` —
+  object-level technical metadata via `ObjectMetadataSet` (OData V2)
+- **Phase 4:** `GET /api/v1/repository/objects/{type}/{name}/source` —
+  ABAP source / structured technical definition via `SourceLinesSet` (OData V2)
 - Canonical repository object model with SAP-native and friendly type names
 - Package normalization (trim, uppercase, deduplicate)
 - Name-pattern normalization with injection-prevention validation
-- Object-type allow-list (12 Phase 3 supported types)
+- Object-type allow-list (12 Phase 3 types; FUNC additionally supported in Phase 4)
 - `all_custom_objects` mode: automatic Z\*/Y\* namespace scan
 - Multi-value fan-out with controlled call budget (max 50 OData calls)
 - Result deduplication with match-reason merging (PACKAGE / NAME_PATTERN / BOTH)
 - Deterministic result sorting (type → name → package)
 - Result limiting with truncation signalling
 - Controlled safety rule: unfiltered full TADIR scans are blocked
+- Source line ordering preserved (strict `line_no` ascending within each component)
+- Source component grouping by `(component_type, component_name)`
+- `max_lines` enforcement (default 5 000, hard max 20 000)
+- Truncation propagation from SAP to API response
+- Unicode source preservation
+- Controlled HTTP 404 for missing objects
 - ZIP export service with manifest support (placeholder)
 - MCP tool contract boundary (placeholder)
 - Docker and SAP BTP Cloud Foundry scaffolding
 - Initial XSUAA role model
-- Comprehensive unit tests for health/config/SAP connectivity/OData/Phase 3
-  behavior (253 tests, fully offline)
+- Comprehensive unit tests for health/config/SAP connectivity/OData/Phase 3/Phase 4
+  behavior (363 tests, fully offline)
 
 ## Architecture principles
 
@@ -63,6 +74,10 @@ further MCP tooling are later phases and are intentionally not implemented yet.
     injection surfaces, or arbitrary RFC invocation.
 11. **OData V2 over HTTPS is the preferred ECC transport.** PyRFC/RFC SDK
     is preserved as optional legacy transport.
+12. Repository search (`POST /api/v1/repository/search`) never automatically
+    retrieves metadata or source for discovered objects (no N+1 extraction).
+13. Source text is preserved exactly as returned by SAP — indentation,
+    special characters, Unicode, and ABAP comments are never reformatted.
 
 ## Phase 2 — SAP ECC OData connectivity (preferred)
 
@@ -88,17 +103,17 @@ SAP ECC NC1
 
 ### OData service details
 
-| Attribute        | Value                                        |
-|------------------|----------------------------------------------|
-| SAP System ID    | NC1                                          |
-| SAP Client       | 800                                          |
-| SAP BASIS        | 740 SP09                                     |
-| SAP_GWFND        | 740 SP10                                     |
-| Gateway service  | `ZNCOREIQ_REPO_SRV`                          |
-| Entity sets      | `SystemInfoSet`, `PackagesSet`, `RepositoryObjectsSet` |
-| Protocol         | OData V2 over HTTPS                          |
-| HTTP client      | `httpx` (async)                              |
-| Authentication   | HTTP Basic (development); BTP Destination (future) |
+| Attribute        | Value                                                                          |
+|------------------|--------------------------------------------------------------------------------|
+| SAP System ID    | NC1                                                                            |
+| SAP Client       | 800                                                                            |
+| SAP BASIS        | 740 SP09                                                                       |
+| SAP_GWFND        | 740 SP10                                                                       |
+| Gateway service  | `ZNCOREIQ_REPO_SRV`                                                            |
+| Entity sets      | `SystemInfoSet`, `PackagesSet`, `RepositoryObjectsSet`, `ObjectMetadataSet`, `SourceLinesSet` |
+| Protocol         | OData V2 over HTTPS                                                            |
+| HTTP client      | `httpx` (async)                                                                |
+| Authentication   | HTTP Basic (development); BTP Destination (future)                             |
 
 ### OData ping call
 
@@ -108,40 +123,6 @@ GET /sap/opu/odata/sap/ZNCOREIQ_REPO_SRV/SystemInfoSet
     &$format=json
 Accept: application/json
 Authorization: Basic <user:password>
-```
-
-Example SAP response:
-
-```json
-{
-  "d": {
-    "results": [
-      {
-        "Status": "OK",
-        "Client": "800",
-        "SapRelease": "740",
-        "Timestamp": "20261008164359",
-        "Message": "N-CoreIQ OData connectivity successful.",
-        "SystemId": "NC1"
-      }
-    ]
-  }
-}
-```
-
-Normalized N-CoreIQ response:
-
-```json
-{
-  "status": "connected",
-  "connection_mode": "odata",
-  "system_id": "NC1",
-  "client": "800",
-  "sap_release": "740",
-  "timestamp": "20261008164359",
-  "ping_method": "SystemInfoSet",
-  "message": "N-CoreIQ OData connectivity successful."
-}
 ```
 
 ## Phase 2 — SAP ECC RFC connectivity (legacy/optional)
@@ -197,89 +178,6 @@ Repository object discovery is implemented exclusively over OData V2 via the
 is made from Python; the Python layer constructs controlled `$filter` expressions
 and sends them to the SAP Gateway, which routes them to the ECC backend.
 
-### OData discovery request
-
-```
-GET /sap/opu/odata/sap/ZNCOREIQ_REPO_SRV/RepositoryObjectsSet
-    ?$filter=RootPackage eq 'ZNCOREIQ'
-             and IncludeSubpackages eq true
-             and RequestedObjectType eq 'PROG'
-             and MaxResults eq 100
-    &$format=json
-    &sap-client=800
-```
-
-Supported `$filter` properties:
-
-| OData property          | Type    | Description                                |
-|-------------------------|---------|--------------------------------------------|
-| `RootPackage`           | String  | SAP package name to search in              |
-| `IncludeSubpackages`    | Boolean | Traverse sub-package hierarchy             |
-| `NamePattern`           | String  | SAP wildcard pattern (e.g. `Z*`, `ZFI*`)  |
-| `RequestedObjectType`   | String  | SAP object type code (e.g. `PROG`, `CLAS`) |
-| `MaxResults`            | Integer | Maximum rows to return per OData call      |
-
-`RootPackage` and `NamePattern` are mutually exclusive per OData call.
-Multi-value inputs are resolved through controlled fan-out (see below).
-
-### Filter semantics
-
-Object type acts as a filter.  Package and name-pattern criteria are the
-discovery reasons:
-
-```
-OBJECT_TYPE  AND  ( PACKAGE_MATCH  OR  NAME_PATTERN_MATCH )
-```
-
-This supports the two primary discovery modes:
-
-- **Package mode:** return all qualifying objects in the requested package(s).
-- **Pattern mode:** return all qualifying objects matching Z\*/Y\*/custom patterns.
-- **Combined mode:** return the union and record `PACKAGE`, `NAME_PATTERN`, or
-  `BOTH` as the `match_reason` for each object.
-
-### Safety rule
-
-A request with no meaningful selector is **rejected with HTTP 422**:
-
-```json
-{ "packages": [], "name_patterns": [], "all_custom_objects": false }
-```
-
-`all_custom_objects: true` must be set explicitly to perform a broad Z/Y
-namespace scan.  The application never performs an unfiltered full TADIR scan.
-
-### Multi-value fan-out
-
-The public `POST /api/v1/repository/search` API accepts multiple packages,
-multiple name patterns, and multiple object types simultaneously.  Because the
-current `RepositoryObjectsSet` OData contract supports one value of each per
-call, the `RepositoryDiscoveryService` implements a controlled fan-out:
-
-- Each `(package OR pattern) × object_type` combination generates one OData
-  call.
-- Maximum fan-out: **50 OData calls** per search request.  Requests that would
-  exceed this limit are rejected with HTTP 422 before any SAP call is made.
-- Results are aggregated, deduplicated, and sorted in the service layer before
-  being returned to the caller.
-
-Example: `packages=["ZPKG1","ZPKG2"]`, `object_types=["PROG","CLAS"]`
-generates 4 OData calls (`ZPKG1×PROG`, `ZPKG1×CLAS`, `ZPKG2×PROG`,
-`ZPKG2×CLAS`).
-
-### Deduplication and match-reason merging
-
-When the same SAP object appears in multiple OData responses (e.g. it matches
-both a package search and a name-pattern search), the service deduplicates on
-`(sap_object_type, object_name)` and merges the `match_reason`:
-
-| Call sources                        | Resulting `match_reason` |
-|-------------------------------------|--------------------------|
-| Package call only                   | `PACKAGE`                |
-| Name-pattern call only              | `NAME_PATTERN`           |
-| Both package and name-pattern calls | `BOTH`                   |
-| SAP already returned `BOTH`         | `BOTH` (preserved)       |
-
 ### Supported object types (Phase 3)
 
 | SAP native type | Friendly name        |
@@ -297,50 +195,6 @@ both a package search and a name-pattern search), the service deduplicates on
 | `TRAN`          | `TRANSACTION`        |
 | `MSAG`          | `MESSAGE_CLASS`      |
 
-If `object_types` is omitted or empty, all 12 Phase 3 types are included in the
-`criteria` echo; no type filter clause is sent to ECC so ECC returns all types.
-Requesting an unsupported type returns HTTP 422.
-
-### Package behavior
-
-- Package names are trimmed, uppercased, and deduplicated before being sent
-  to ECC.  `["zfinance", "ZFINANCE", " ZFI_UTIL "]` → `["ZFINANCE", "ZFI_UTIL"]`.
-- `include_subpackages: true` sends `IncludeSubpackages eq true` in the OData
-  filter; ECC's `Z_MCP_REPO_DISCOVER` backend performs the hierarchy traversal.
-- Package depth: root = 0, child = 1, grandchild = 2, etc.
-- Custom packages are not restricted to the Z/Y namespace — an explicitly
-  supplied package name is accepted regardless of its initial letter.
-
-### all_custom_objects behavior
-
-When `all_custom_objects: true` the service injects name patterns `Z*` and
-`Y*` automatically.  This is an explicit opt-in for customer namespace objects —
-it does **not** scan all SAP repository objects.
-
-If ECC later exposes a native `AllCustomObjects` filter property, the service
-layer can move the logic server-side without changing the public API.
-
-### Result limits
-
-| Setting              | Value  |
-|----------------------|--------|
-| Default `max_results`| 1 000  |
-| Hard application limit | 10 000 |
-| Minimum `max_results`| 1      |
-
-Requests above the hard limit are rejected with HTTP 422.  When ECC returns
-more matches than requested, `truncated: true` is set in the response.
-
-### Truncation
-
-`truncated: true` is set in the response when:
-
-- Any underlying OData call reports `Truncated = true`, **or**
-- The aggregated unique-object count had to be capped to `max_results`.
-
-`total_matches` is `null` for multi-call requests where results may overlap
-and a precise total cannot be determined safely.
-
 ### Repository search request
 
 ```json
@@ -354,135 +208,268 @@ and a precise total cannot be determined safely.
 }
 ```
 
-| Field               | Type         | Default | Description                                       |
-|---------------------|--------------|---------|---------------------------------------------------|
-| `packages`          | list[str]    | `[]`    | SAP package names (trimmed, uppercased, deduplicated) |
-| `include_subpackages` | bool       | `false` | Traverse sub-package hierarchy in ECC                 |
-| `name_patterns`     | list[str]    | `[]`    | SAP wildcard patterns (e.g. `ZFI*`)                   |
-| `object_types`      | list[str]    | `[]`    | Phase 3 SAP type codes; empty = all 12 types           |
-| `max_results`       | int          | `1000`  | Cap on returned objects (1–10 000)                    |
-| `all_custom_objects`| bool         | `false` | Inject `Z*`/`Y*` patterns automatically               |
-
-### Repository search examples
-
-**Package search:**
-```json
-{
-  "packages": ["ZNCOREIQ"],
-  "include_subpackages": true,
-  "max_results": 1000
-}
-```
-
-**Name-pattern search:**
-```json
-{
-  "packages": [],
-  "name_patterns": ["ZFI*"],
-  "object_types": ["PROG"],
-  "max_results": 500
-}
-```
-
-**Multiple-type search:**
-```json
-{
-  "packages": ["ZFINANCE"],
-  "include_subpackages": true,
-  "object_types": ["PROG", "CLAS", "TABL"],
-  "max_results": 1000
-}
-```
-
-**Broad custom-object scan:**
-```json
-{
-  "all_custom_objects": true,
-  "object_types": ["PROG", "CLAS"],
-  "max_results": 1000
-}
-```
-
 ### Repository search response
 
 ```json
 {
   "system_id": "NC1",
   "client": "800",
-  "criteria": {
-    "packages": ["ZNCOREIQ"],
-    "include_subpackages": true,
-    "name_patterns": [],
-    "object_types": ["PROG", "CLAS"],
-    "all_custom_objects": false,
-    "max_results": 500
-  },
-  "statistics": {
-    "total_matches": 25,
-    "returned": 25
-  },
+  "criteria": { "...": "..." },
+  "statistics": { "total_matches": 25, "returned": 25 },
   "truncated": false,
   "message": "Discovery completed successfully.",
   "objects": [
     {
-      "system_id": "NC1",
-      "client": "800",
       "sap_object_type": "PROG",
       "friendly_type": "PROGRAM",
       "object_name": "ZNCOREIQ_MAIN",
       "package": "ZNCOREIQ",
       "description": "N-CoreIQ main program",
-      "author": "DEVELOPER",
-      "match_reason": "PACKAGE",
-      "warning": null
+      "match_reason": "PACKAGE"
     }
   ]
 }
 ```
 
-| Response field               | Description                                              |
-|------------------------------|----------------------------------------------------------|
-| `system_id`                  | SAP System ID (from ECC response)                        |
-| `client`                     | SAP Client (from ECC response)                           |
-| `criteria`                   | Echo of effective search criteria after normalization    |
-| `statistics.total_matches`   | Total known matches; `null` if undetermined (multi-call) |
-| `statistics.returned`        | Number of unique objects actually returned               |
-| `truncated`                  | `true` if any OData call was truncated or cap applied    |
-| `message`                    | Human-readable summary                                   |
-| `objects`                    | List of normalized `RepositoryObject` records            |
+### Safety rule
 
-### HTTP status codes
+A request with no meaningful selector is **rejected with HTTP 422**.
+`all_custom_objects: true` must be set explicitly to perform a broad Z/Y
+namespace scan.
+
+---
+
+## Phase 4 — Object Metadata & Source Extraction (OData V2)
+
+### Architecture
+
+```
+N-CoreIQ REST API
+        ↓
+RepositoryObjectService
+        ↓
+SapConnectionProvider abstraction
+        ↓
+ODataSAPConnectionProvider
+        ↓
+httpx (async) / HTTPS / OData V2
+        ↓
+SAP Gateway
+        ↓
+ZNCOREIQ_REPO_SRV
+        │
+        ├── ObjectMetadataSet  →  Z_MCP_REPO_GET_METADATA (ECC backend)
+        │
+        └── SourceLinesSet     →  Z_MCP_REPO_GET_SOURCE (ECC backend)
+```
+
+Python never calls `Z_MCP_REPO_GET_METADATA` or `Z_MCP_REPO_GET_SOURCE`
+directly.  All ECC communication goes through SAP Gateway OData V2 over HTTPS.
+
+### Phase 4 endpoints
+
+#### GET metadata
+
+```
+GET /api/v1/repository/objects/{object_type}/{object_name}/metadata
+```
+
+Example:
+
+```
+GET /api/v1/repository/objects/PROG/ZMY_PROGRAM/metadata
+```
+
+Returns `RepositoryObjectMetadata`.
+
+#### GET source
+
+```
+GET /api/v1/repository/objects/{object_type}/{object_name}/source
+    ?max_lines=5000
+```
+
+Example:
+
+```
+GET /api/v1/repository/objects/CLAS/ZCL_SAMPLE/source?max_lines=5000
+```
+
+Returns `RepositoryObjectSource`.
+
+The `source` endpoint retrieves ABAP source for executable objects (`PROG`,
+`CLAS`, `INTF`, `FUGR`, `FUNC`) and a structured textual representation for
+DDIC/technical objects (`TABL`, `DTEL`, `DOMA`, `VIEW`, `SHLP`, `ENQU`) or
+definitions for transactional objects (`TRAN`, `MSAG`).  The
+`component_type` field in each source component identifies the representation
+type so downstream consumers can distinguish ABAP source from structured
+technical definitions.
+
+### Supported object types (Phase 4)
+
+| SAP native type | Metadata | Source/Definition |
+|-----------------|----------|-------------------|
+| `PROG`          | ✓        | ✓                 |
+| `CLAS`          | ✓        | ✓ (multi-component) |
+| `INTF`          | ✓        | ✓                 |
+| `FUGR`          | ✓        | ✓ (multi-component) |
+| `FUNC`          | ✓        | ✓                 |
+| `TABL`          | ✓        | ✓ (structured definition) |
+| `DTEL`          | ✓        | ✓                 |
+| `DOMA`          | ✓        | ✓                 |
+| `VIEW`          | ✓        | ✓                 |
+| `SHLP`          | ✓        | ✓                 |
+| `ENQU`          | ✓        | ✓                 |
+| `TRAN`          | ✓        | ✓                 |
+| `MSAG`          | ✓        | ✓                 |
+
+`FUNC` is supported in Phase 4 metadata/source retrieval.  Phase 3 discovery
+(`RepositoryObjectsSet`) is not extended to discover `FUNC` directly.
+
+### ObjectMetadataSet OData request
+
+```
+GET /sap/opu/odata/sap/ZNCOREIQ_REPO_SRV/ObjectMetadataSet
+    ?$filter=ObjectType eq 'PROG' and ObjectName eq 'ZMY_PROGRAM'
+    &$format=json
+    &sap-client=800
+```
+
+### RepositoryObjectMetadata model
+
+| Field              | Type        | Description                              |
+|--------------------|-------------|------------------------------------------|
+| `system_id`        | str \| None | SAP System ID                            |
+| `client`           | str \| None | SAP Client                               |
+| `pgmid`            | str \| None | Program ID (R3TR, LIMU, etc.)            |
+| `sap_object_type`  | str         | SAP object type code                     |
+| `object_name`      | str         | SAP object name                          |
+| `package`          | str \| None | Development package                      |
+| `author`           | str \| None | Creating user                            |
+| `master_language`  | str \| None | Master language key                      |
+| `source_system`    | str \| None | Source system                            |
+| `created_date`     | str \| None | Creation date (YYYYMMDD)                 |
+| `changed_by`       | str \| None | Last change user                         |
+| `changed_date`     | str \| None | Last change date (YYYYMMDD)              |
+| `description`      | str \| None | Short description                        |
+| `active_status`    | str \| None | Active/inactive status                   |
+| `object_subtype`   | str \| None | Object subtype                           |
+| `program_name`     | str \| None | Associated program name                  |
+| `function_group`   | str \| None | Function group (for FUNC objects)        |
+| `table_class`      | str \| None | Table class (for TABL objects)           |
+| `warning`          | str \| None | Non-fatal SAP warning message            |
+| `found`            | bool        | Whether the object was found in ECC      |
+| `message`          | str \| None | SAP response message                     |
+
+### SourceLinesSet OData request
+
+```
+GET /sap/opu/odata/sap/ZNCOREIQ_REPO_SRV/SourceLinesSet
+    ?$filter=ObjectType eq 'PROG' and ObjectName eq 'ZMY_PROGRAM' and MaxLines eq 5000
+    &$format=json
+    &sap-client=800
+```
+
+### RepositoryObjectSource model
+
+```json
+{
+  "system_id": "NC1",
+  "client": "800",
+  "sap_object_type": "PROG",
+  "object_name": "ZMY_PROGRAM",
+  "max_lines": 5000,
+  "returned_lines": 125,
+  "component_count": 1,
+  "found": true,
+  "truncated": false,
+  "message": "Source retrieved successfully.",
+  "components": [
+    {
+      "component_type": "PROGRAM",
+      "component_name": "ZMY_PROGRAM",
+      "line_count": 125,
+      "lines": [
+        { "component_type": "PROGRAM", "component_name": "ZMY_PROGRAM", "line_no": 1, "source_line": "REPORT zmy_program." },
+        { "component_type": "PROGRAM", "component_name": "ZMY_PROGRAM", "line_no": 2, "source_line": "" }
+      ]
+    }
+  ]
+}
+```
+
+### Source component grouping
+
+Source rows from `SourceLinesSet` are grouped by `(component_type, component_name)`.
+Within each component, lines are sorted strictly by `line_no` ascending.
+Ordering is deterministic regardless of the order SAP returns the rows.
+
+For multi-component objects (e.g. `CLAS`, `FUGR`), each component is a separate
+entry in the `components` list, preserving source component boundaries exactly
+as returned by ECC.
+
+### max_lines parameter
+
+| Setting        | Value  |
+|----------------|--------|
+| Default        | 5 000  |
+| Minimum        | 1      |
+| Hard maximum   | 20 000 |
+
+Values of `0`, negative integers, or values above `20 000` are rejected with
+HTTP 422.  Silent unlimited source extraction is not permitted.
+
+### Truncation
+
+If SAP returns `Truncated = true` for any source row, the response sets
+`truncated: true`.  The caller must not assume the extracted source is complete
+when `truncated` is `true`.
+
+### Object not found
+
+If SAP reports `Found = false` or returns no rows for a genuinely missing
+object, N-CoreIQ raises a controlled `RepositoryObjectNotFoundError` and
+returns HTTP 404.  An empty result set for an existing object with no source
+representation is handled separately using backend message/warning semantics.
+
+### Source integrity
+
+Duplicate rows (same `component_type`, `component_name`, `line_no`, different
+`source_line`) raise `RepositorySourceDataIntegrityError` rather than silently
+overwriting source.  Source text is preserved exactly — indentation, special
+ABAP characters, comments, accented descriptions, and non-English Unicode text
+are not modified.
+
+### Phase 4 HTTP status codes
 
 | Code  | Condition                                              |
 |-------|--------------------------------------------------------|
-| `200` | Successful search (including zero results)             |
-| `422` | Invalid request (blank search, unsupported type, etc.) |
-| `422` | Search fan-out exceeds 50 OData call budget            |
-| `401` / `403` | SAP authentication / authorization failure   |
-| `501` | SAP connection mode not yet implemented (BTP)          |
+| `200` | Successful metadata or source retrieval                |
+| `404` | Object not found in ECC                                |
+| `422` | Unsupported object type / blank identifier / invalid max_lines |
 | `503` | SAP Gateway unavailable, TLS failure, timeout          |
-| `502` / `503` | Malformed OData response from SAP Gateway    |
 
-## Package resolution endpoint (Phase 3)
+### No N+1 extraction during search
 
-```
-GET /api/v1/repository/packages/{package}
-    ?include_subpackages=true
-    &max_depth=5
-```
+`POST /api/v1/repository/search` **never** automatically calls
+`ObjectMetadataSet` or `SourceLinesSet` for discovered objects.  Metadata and
+source retrieval occur only when explicitly requested for an identified object
+via the Phase 4 endpoints.
 
-Uses `Z_MCP_REPO_PACKAGES` (RFC) to resolve SAP package hierarchy.
+---
 
 ## API endpoints
 
-| Method | Path                              | Description                            |
-|--------|-----------------------------------|----------------------------------------|
-| GET    | `/api/v1/health`                  | Application liveness (no SAP required) |
-| GET    | `/api/v1/sap/ping`                | SAP ECC connectivity check             |
-| GET    | `/api/v1/repository/packages/{p}` | SAP package hierarchy resolution       |
-| POST   | `/api/v1/repository/search`       | Repository object discovery            |
-| GET    | `/docs`                           | Swagger / OpenAPI interactive docs     |
-| GET    | `/redoc`                          | ReDoc documentation                    |
+| Method | Path                                                    | Description                               |
+|--------|---------------------------------------------------------|-------------------------------------------|
+| GET    | `/api/v1/health`                                        | Application liveness (no SAP required)    |
+| GET    | `/api/v1/sap/ping`                                      | SAP ECC connectivity check                |
+| GET    | `/api/v1/repository/packages/{p}`                       | SAP package hierarchy resolution          |
+| POST   | `/api/v1/repository/search`                             | Repository object discovery               |
+| GET    | `/api/v1/repository/objects/{type}/{name}/metadata`     | Object technical metadata (Phase 4)       |
+| GET    | `/api/v1/repository/objects/{type}/{name}/source`       | Object ABAP source / definition (Phase 4) |
+| GET    | `/docs`                                                 | Swagger / OpenAPI interactive docs        |
+| GET    | `/redoc`                                                | ReDoc documentation                       |
 
 ## Configuration
 
@@ -517,9 +504,9 @@ uvicorn app.main:app --reload --port 8000
 py -m pytest tests/ -v
 ```
 
-All 253 tests run fully offline (no SAP connection required).
+All 363 tests run fully offline (no SAP connection required).
 
-## Known limitations (Phase 3)
+## Known limitations
 
 - `RepositoryObjectsSet` supports **one** `RootPackage` or `NamePattern` and
   **one** `RequestedObjectType` per OData call; multi-value inputs fan out to
@@ -528,4 +515,9 @@ All 253 tests run fully offline (no SAP connection required).
   may count the same object more than once.
 - `all_custom_objects` is implemented at the application layer as Z\*/Y\* pattern
   injection.  An ECC-native `AllCustomObjects` filter does not yet exist.
-- Source extraction, dependency analysis, and export are Phase 4+.
+- Phase 4 metadata/source extraction is single-object per request.  Bulk
+  extraction, ZIP export, and large-repository export are Phase 5+ concerns.
+- `FUNC` is supported in Phase 4 metadata/source retrieval but not in Phase 3
+  repository discovery via `RepositoryObjectsSet`.
+- Dates are returned in `YYYYMMDD` format as provided by ECC.  ISO 8601
+  conversion is not applied in Phase 4.

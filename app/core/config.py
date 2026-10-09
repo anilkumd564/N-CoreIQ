@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "SAP Repository Intelligence Layer"
-    app_version: str = "0.3.0"
+    app_version: str = "0.4.0"
     app_env: Literal["local", "btp", "test"] = "local"
     log_level: str = "INFO"
 

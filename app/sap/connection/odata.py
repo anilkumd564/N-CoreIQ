@@ -37,11 +37,19 @@ except ImportError:  # pragma: no cover
     _TRUSTSTORE_AVAILABLE = False
 
 from app.core.config import Settings
+from app.models.phase4 import (
+    RepositoryObjectMetadata,
+    RepositoryObjectSource,
+    RepositorySourceComponent,
+    RepositorySourceLine,
+)
 from app.models.repository import PackageResolutionResult, RepositoryPackage
 from app.models.results import ConnectionTestResult
 from app.sap.connection.base import ODataDiscoveryResult, SapConnectionProvider
 from app.sap.exceptions import (
+    RepositoryObjectNotFoundError,
     RepositoryPackageNotFoundError,
+    RepositorySourceDataIntegrityError,
     SAPAuthenticationError,
     SAPCommunicationError,
     SAPConfigurationError,
@@ -874,6 +882,431 @@ class ODataSAPConnectionProvider(SapConnectionProvider):
                 "rows_returned": len(result.rows),
                 "truncated": result.truncated,
                 "total_matches": result.total_matches,
+                "system_id": result.system_id,
+                "client": result.client,
+                "duration_seconds": round(elapsed, 3),
+            },
+        )
+        return result
+
+
+    # ------------------------------------------------------------------
+    # Response parsing — ObjectMetadataSet (Phase 4)
+    # ------------------------------------------------------------------
+
+    def _parse_object_metadata(
+        self,
+        payload: Any,
+        object_type: str,
+        object_name: str,
+    ) -> RepositoryObjectMetadata:
+        """Parse an ObjectMetadataSet OData V2 JSON response.
+
+        Raises:
+            SAPResponseParseError: if the OData envelope is malformed.
+            RepositoryObjectNotFoundError: if Found=false or no results.
+        """
+        if not isinstance(payload, dict) or "d" not in payload:
+            raise SAPResponseParseError(
+                "SAP OData ObjectMetadataSet response is missing the expected 'd' envelope."
+            )
+        d = payload["d"]
+        if not isinstance(d, dict) or "results" not in d:
+            raise SAPResponseParseError(
+                "SAP OData ObjectMetadataSet 'd' object is missing the 'results' list."
+            )
+        results = d["results"]
+        if not isinstance(results, list):
+            raise SAPResponseParseError(
+                "SAP OData ObjectMetadataSet 'results' is not a list."
+            )
+        if len(results) == 0:
+            raise RepositoryObjectNotFoundError(object_type, object_name)
+
+        row = results[0]
+        if not isinstance(row, dict):
+            raise SAPResponseParseError(
+                "SAP OData ObjectMetadataSet result row is not a dict."
+            )
+
+        # Check Found flag before trusting any other field.
+        found = self._coerce_bool(row.get("Found", True))
+        if not found:
+            raise RepositoryObjectNotFoundError(object_type, object_name)
+
+        def _str(key: str) -> str | None:
+            v = str(row.get(key) or "").strip()
+            return v if v else None
+
+        return RepositoryObjectMetadata(
+            sap_object_type=str(row.get("ObjectType") or object_type).strip(),
+            object_name=str(row.get("ObjectName") or object_name).strip(),
+            system_id=_str("SystemId"),
+            client=_str("Client"),
+            pgmid=_str("Pgmid"),
+            package=_str("Package"),
+            object_subtype=_str("ObjectSubtype"),
+            program_name=_str("ProgramName"),
+            function_group=_str("FunctionGroup"),
+            table_class=_str("TableClass"),
+            author=_str("Author"),
+            master_language=_str("MasterLanguage"),
+            source_system=_str("SourceSystem"),
+            created_date=_str("CreatedDate"),
+            changed_by=_str("ChangedBy"),
+            changed_date=_str("ChangedDate"),
+            description=_str("Description"),
+            active_status=_str("ActiveStatus"),
+            found=True,
+            warning=_str("Warning"),
+            message=_str("Message"),
+        )
+
+    # ------------------------------------------------------------------
+    # Response parsing — SourceLinesSet (Phase 4)
+    # ------------------------------------------------------------------
+
+    def _parse_object_source(
+        self,
+        payload: Any,
+        object_type: str,
+        object_name: str,
+        max_lines: int,
+    ) -> RepositoryObjectSource:
+        """Parse a SourceLinesSet OData V2 JSON response into RepositoryObjectSource.
+
+        Raises:
+            SAPResponseParseError: if the OData envelope is malformed.
+            RepositoryObjectNotFoundError: if Found=false.
+            RepositorySourceDataIntegrityError: if conflicting line numbers are detected.
+        """
+        if not isinstance(payload, dict) or "d" not in payload:
+            raise SAPResponseParseError(
+                "SAP OData SourceLinesSet response is missing the expected 'd' envelope."
+            )
+        d = payload["d"]
+        if not isinstance(d, dict) or "results" not in d:
+            raise SAPResponseParseError(
+                "SAP OData SourceLinesSet 'd' object is missing the 'results' list."
+            )
+        results = d["results"]
+        if not isinstance(results, list):
+            raise SAPResponseParseError(
+                "SAP OData SourceLinesSet 'results' is not a list."
+            )
+
+        system_id: str | None = None
+        client: str | None = None
+        message: str | None = None
+        truncated = False
+        found = True
+
+        # Check Found on first row if present.
+        if len(results) > 0:
+            first = results[0]
+            if isinstance(first, dict):
+                found = self._coerce_bool(first.get("Found", True))
+                system_id = str(first.get("SystemId") or "").strip() or None
+                client = str(first.get("Client") or "").strip() or None
+                message = str(first.get("Message") or "").strip() or None
+
+        if not found and len(results) <= 1:
+            raise RepositoryObjectNotFoundError(object_type, object_name)
+
+        # Group rows by (component_type, component_name) preserving insertion order.
+        # Within each component track: {line_no: source_line} for integrity checking.
+        # component_order preserves first-seen order for determinism.
+        ComponentKey = tuple  # (component_type, component_name)
+        component_order: list[ComponentKey] = []
+        component_lines: dict[ComponentKey, dict[int, str]] = {}
+
+        for idx, raw_row in enumerate(results):
+            if not isinstance(raw_row, dict):
+                raise SAPResponseParseError(
+                    f"SAP OData SourceLinesSet result row [{idx}] is not a dict."
+                )
+
+            if self._coerce_bool(raw_row.get("Truncated", False)):
+                truncated = True
+
+            row_msg = str(raw_row.get("Message") or "").strip()
+            if row_msg and not message:
+                message = row_msg
+
+            comp_type = str(raw_row.get("ComponentType") or "").strip()
+            comp_name = str(raw_row.get("ComponentName") or "").strip()
+
+            # Skip rows with no component identity (echo/metadata-only rows).
+            if not comp_type and not comp_name:
+                # Still update system context from these rows.
+                if not system_id:
+                    system_id = str(raw_row.get("SystemId") or "").strip() or None
+                if not client:
+                    client = str(raw_row.get("Client") or "").strip() or None
+                continue
+
+            # Parse line number.
+            raw_line_no = raw_row.get("LineNo")
+            try:
+                line_no = int(raw_line_no)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "sap_odata_source_invalid_line_no",
+                    extra={
+                        "operation": "source_extraction",
+                        "object_type": object_type,
+                        "object_name": object_name,
+                        "row_index": idx,
+                        "raw_line_no": repr(raw_line_no),
+                    },
+                )
+                continue
+
+            source_line_text = str(raw_row.get("SourceLine") or "")
+
+            key: ComponentKey = (comp_type, comp_name)
+            if key not in component_lines:
+                component_order.append(key)
+                component_lines[key] = {}
+
+            existing = component_lines[key]
+            if line_no in existing:
+                if existing[line_no] != source_line_text:
+                    raise RepositorySourceDataIntegrityError(
+                        comp_type, comp_name, line_no
+                    )
+                # Identical duplicate — safe to skip.
+                continue
+
+            existing[line_no] = source_line_text
+
+        # Build canonical component models in insertion order.
+        components: list[RepositorySourceComponent] = []
+        total_lines = 0
+
+        for key in component_order:
+            comp_type, comp_name = key
+            line_map = component_lines[key]
+            sorted_line_nos = sorted(line_map.keys())
+            source_lines = [
+                RepositorySourceLine(
+                    component_type=comp_type,
+                    component_name=comp_name,
+                    line_no=ln,
+                    source_line=line_map[ln],
+                )
+                for ln in sorted_line_nos
+            ]
+            source_text = "\n".join(sl.source_line for sl in source_lines)
+            total_lines += len(source_lines)
+            components.append(
+                RepositorySourceComponent(
+                    component_type=comp_type,
+                    component_name=comp_name,
+                    line_count=len(source_lines),
+                    lines=source_lines,
+                    source_text=source_text,
+                )
+            )
+
+        return RepositoryObjectSource(
+            sap_object_type=object_type,
+            object_name=object_name,
+            system_id=system_id,
+            client=client,
+            max_lines=max_lines,
+            returned_lines=total_lines,
+            component_count=len(components),
+            found=found,
+            truncated=truncated,
+            message=message,
+            components=components,
+        )
+
+    # ------------------------------------------------------------------
+    # Object metadata retrieval (Phase 4)
+    # ------------------------------------------------------------------
+
+    async def get_object_metadata(
+        self,
+        object_type: str,
+        object_name: str,
+    ) -> RepositoryObjectMetadata:
+        """Retrieve technical metadata via ObjectMetadataSet (OData V2)."""
+        self._require_configuration()
+        odata = self.settings.sap_odata
+
+        escaped_type = self._escape_odata_string(object_type)
+        escaped_name = self._escape_odata_string(object_name)
+        odata_filter = (
+            f"ObjectType eq '{escaped_type}' and ObjectName eq '{escaped_name}'"
+        )
+
+        url = f"{self._service_root()}/ObjectMetadataSet"
+        params = {
+            "sap-client": odata.client,
+            "$filter": odata_filter,
+            "$format": "json",
+        }
+
+        start_time = time.monotonic()
+        logger.info(
+            "sap_odata_metadata_start",
+            extra={
+                "operation": "object_metadata",
+                "object_type": object_type,
+                "object_name": object_name,
+                "entity_set": "ObjectMetadataSet",
+            },
+        )
+
+        try:
+            async with self._build_client() as http_client:
+                response = await http_client.get(url, params=params)
+        except httpx.RequestError as exc:
+            raise self._map_http_exception(exc) from exc
+
+        status_code = response.status_code
+        if status_code == 401:
+            raise SAPAuthenticationError(
+                "SAP authentication failed during metadata retrieval. "
+                "Check SAP_ODATA__USER and SAP_ODATA__PASSWORD."
+            )
+        if status_code == 403:
+            raise SAPAuthenticationError(
+                "SAP user lacks permission to access ObjectMetadataSet. "
+                f"Assign the required OData authorisation in SAP ({odata.service})."
+            )
+        if status_code == 404:
+            raise SAPGatewayError(
+                "SAP OData entity set 'ObjectMetadataSet' was not found (HTTP 404). "
+                f"Verify the service '{odata.service}' is activated in /IWFND/MAINT_SERVICE."
+            )
+        if status_code >= 500:
+            raise SAPGatewayError(
+                "SAP OData service returned an internal server error during metadata retrieval."
+            )
+        if status_code != 200:
+            raise SAPCommunicationError(
+                f"SAP OData ObjectMetadataSet returned unexpected HTTP status {status_code}."
+            )
+
+        try:
+            payload = response.json()
+        except Exception as exc:  # noqa: BLE001
+            raise SAPResponseParseError(
+                "SAP OData ObjectMetadataSet response body is not valid JSON."
+            ) from exc
+
+        result = self._parse_object_metadata(payload, object_type, object_name)
+
+        elapsed = time.monotonic() - start_time
+        logger.info(
+            "sap_odata_metadata_complete",
+            extra={
+                "operation": "object_metadata",
+                "object_type": object_type,
+                "object_name": object_name,
+                "found": result.found,
+                "system_id": result.system_id,
+                "client": result.client,
+                "duration_seconds": round(elapsed, 3),
+            },
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # Source extraction (Phase 4)
+    # ------------------------------------------------------------------
+
+    async def get_object_source(
+        self,
+        object_type: str,
+        object_name: str,
+        max_lines: int = 5000,
+    ) -> RepositoryObjectSource:
+        """Retrieve source/definition via SourceLinesSet (OData V2)."""
+        self._require_configuration()
+        odata = self.settings.sap_odata
+
+        escaped_type = self._escape_odata_string(object_type)
+        escaped_name = self._escape_odata_string(object_name)
+        odata_filter = (
+            f"ObjectType eq '{escaped_type}' "
+            f"and ObjectName eq '{escaped_name}' "
+            f"and MaxLines eq {max_lines}"
+        )
+
+        url = f"{self._service_root()}/SourceLinesSet"
+        params = {
+            "sap-client": odata.client,
+            "$filter": odata_filter,
+            "$format": "json",
+        }
+
+        start_time = time.monotonic()
+        logger.info(
+            "sap_odata_source_start",
+            extra={
+                "operation": "source_extraction",
+                "object_type": object_type,
+                "object_name": object_name,
+                "max_lines": max_lines,
+                "entity_set": "SourceLinesSet",
+            },
+        )
+
+        try:
+            async with self._build_client() as http_client:
+                response = await http_client.get(url, params=params)
+        except httpx.RequestError as exc:
+            raise self._map_http_exception(exc) from exc
+
+        status_code = response.status_code
+        if status_code == 401:
+            raise SAPAuthenticationError(
+                "SAP authentication failed during source extraction. "
+                "Check SAP_ODATA__USER and SAP_ODATA__PASSWORD."
+            )
+        if status_code == 403:
+            raise SAPAuthenticationError(
+                "SAP user lacks permission to access SourceLinesSet. "
+                f"Assign the required OData authorisation in SAP ({odata.service})."
+            )
+        if status_code == 404:
+            raise SAPGatewayError(
+                "SAP OData entity set 'SourceLinesSet' was not found (HTTP 404). "
+                f"Verify the service '{odata.service}' is activated in /IWFND/MAINT_SERVICE."
+            )
+        if status_code >= 500:
+            raise SAPGatewayError(
+                "SAP OData service returned an internal server error during source extraction."
+            )
+        if status_code != 200:
+            raise SAPCommunicationError(
+                f"SAP OData SourceLinesSet returned unexpected HTTP status {status_code}."
+            )
+
+        try:
+            payload = response.json()
+        except Exception as exc:  # noqa: BLE001
+            raise SAPResponseParseError(
+                "SAP OData SourceLinesSet response body is not valid JSON."
+            ) from exc
+
+        result = self._parse_object_source(payload, object_type, object_name, max_lines)
+
+        elapsed = time.monotonic() - start_time
+        logger.info(
+            "sap_odata_source_complete",
+            extra={
+                "operation": "source_extraction",
+                "object_type": object_type,
+                "object_name": object_name,
+                "returned_lines": result.returned_lines,
+                "component_count": result.component_count,
+                "truncated": result.truncated,
+                "found": result.found,
                 "system_id": result.system_id,
                 "client": result.client,
                 "duration_seconds": round(elapsed, 3),

@@ -27,8 +27,18 @@ from app.models.results import (
 )
 from app.sap.connection.factory import build_sap_connection_provider
 from app.models.repository import PackageResolutionResult
+from app.models.phase4 import (
+    DEFAULT_MAX_SOURCE_LINES,
+    MAX_SOURCE_LINES_HARD_LIMIT,
+    MIN_SOURCE_LINES,
+    RepositoryObjectMetadata,
+    RepositoryObjectSource,
+)
 from app.sap.exceptions import (
+    RepositoryObjectNotFoundError,
+    RepositoryObjectTypeNotSupportedError,
     RepositoryPackageNotFoundError,
+    RepositorySourceDataIntegrityError,
     SAPAuthenticationError,
     SAPCommunicationError,
     SAPConfigurationError,
@@ -39,14 +49,20 @@ from app.sap.exceptions import (
     SAPRFCRuntimeUnavailableError,
 )
 from app.services.repository import RepositoryService
+from app.services.object_service import RepositoryObjectService, get_object_service
 
 logger = logging.getLogger("app.api.routes")
 
 router = APIRouter()
 
 
-def repository_service(settings: Settings = Depends(get_settings)) -> RepositoryService:
+def get_discovery_service(settings: Settings = Depends(get_settings)) -> RepositoryService:
+    """FastAPI dependency that constructs a :class:`RepositoryService` for discovery."""
     return RepositoryService(build_sap_connection_provider(settings))
+
+
+# Keep the old name as an alias so any existing internal references still resolve.
+repository_service = get_discovery_service
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +153,7 @@ async def sap_ping(settings: Settings = Depends(get_settings)) -> ConnectionTest
 )
 async def search_repository(
     request: RepositorySearchRequest,
-    service: RepositoryService = Depends(repository_service),
+    service: RepositoryService = Depends(get_discovery_service),
 ) -> RepositorySearchResponse:
     try:
         return await service.search(request)
@@ -300,21 +316,202 @@ async def get_packages(
 
 
 # ---------------------------------------------------------------------------
-# Phase 4+ — Object detail (stub)
+# Phase 4 — Object Metadata
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/repository/objects/{object_type}/{object_name}/metadata",
+    response_model=RepositoryObjectMetadata,
+    summary="Retrieve SAP repository object metadata",
+    tags=["repository", "phase4"],
+    description=(
+        "Returns technical metadata for a single SAP repository object by "
+        "calling **ObjectMetadataSet** on the ZNCOREIQ_REPO_SRV OData V2 service.\n\n"
+        "Object type and name are automatically trimmed and uppercased.\n\n"
+        "**Supported object types:** "
+        "PROG, CLAS, INTF, FUGR, FUNC, TABL, DTEL, DOMA, VIEW, SHLP, ENQU, TRAN, MSAG\n\n"
+        "**Example:**\n"
+        "```\n"
+        "GET /api/v1/repository/objects/PROG/ZMY_PROGRAM/metadata\n"
+        "```\n\n"
+        "**Status codes:**\n"
+        "- `200` — Object found, metadata returned.\n"
+        "- `404` — Object does not exist in SAP.\n"
+        "- `422` — Unsupported object type or blank identifier.\n"
+        "- `503` — SAP connectivity failure.\n"
+    ),
+)
+async def get_object_metadata(
+    object_type: str,
+    object_name: str,
+    service: RepositoryObjectService = Depends(get_object_service),
+) -> RepositoryObjectMetadata:
+    try:
+        return await service.get_metadata(
+            object_type=object_type,
+            object_name=object_name,
+        )
+    except ValueError as exc:
+        logger.warning(
+            "object_metadata_validation_error",
+            extra={"operation": "get_object_metadata", "detail": str(exc)},
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RepositoryObjectTypeNotSupportedError as exc:
+        logger.warning(
+            "object_metadata_unsupported_type",
+            extra={
+                "operation": "get_object_metadata",
+                "object_type": exc.object_type,
+            },
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RepositoryObjectNotFoundError as exc:
+        logger.info(
+            "object_metadata_not_found",
+            extra={
+                "operation": "get_object_metadata",
+                "object_type": exc.object_type,
+                "object_name": exc.object_name,
+            },
+        )
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SAPConfigurationError as exc:
+        logger.warning("object_metadata_config_invalid", extra={"operation": "get_object_metadata"})
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SAPAuthenticationError as exc:
+        logger.warning("object_metadata_auth_failed", extra={"operation": "get_object_metadata"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPConnectionError as exc:
+        logger.warning("object_metadata_unreachable", extra={"operation": "get_object_metadata"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPFunctionExecutionError as exc:
+        logger.warning("object_metadata_function_failed", extra={"operation": "get_object_metadata"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPCommunicationError as exc:
+        logger.warning("object_metadata_communication_failed", extra={"operation": "get_object_metadata"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Object Source / Technical Definition
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/repository/objects/{object_type}/{object_name}/source",
+    response_model=RepositoryObjectSource,
+    summary="Retrieve SAP repository object source or technical definition",
+    tags=["repository", "phase4"],
+    description=(
+        "Returns the ABAP source code or structured technical definition for a "
+        "single SAP repository object by calling **SourceLinesSet** on the "
+        "ZNCOREIQ_REPO_SRV OData V2 service.\n\n"
+        "For executable objects (PROG, CLAS, INTF, FUGR, FUNC) this returns "
+        "actual ABAP source.  For DDIC/technical objects (TABL, DTEL, DOMA, "
+        "VIEW, SHLP, ENQU) this returns a structured textual definition.  "
+        "For TRAN/MSAG this returns transaction/message definitions.\n\n"
+        "Source text is **never** reformatted, uppercased, or indentation-stripped.\n\n"
+        "**Supported object types:** "
+        "PROG, CLAS, INTF, FUGR, FUNC, TABL, DTEL, DOMA, VIEW, SHLP, ENQU, TRAN, MSAG\n\n"
+        "**Query parameters:**\n"
+        f"- `max_lines` — Maximum source lines to return. "
+        f"Range: {MIN_SOURCE_LINES}–{MAX_SOURCE_LINES_HARD_LIMIT}. "
+        f"Default: {DEFAULT_MAX_SOURCE_LINES}.\n\n"
+        "**Example:**\n"
+        "```\n"
+        "GET /api/v1/repository/objects/PROG/ZMY_PROGRAM/source?max_lines=5000\n"
+        "```\n\n"
+        "**Status codes:**\n"
+        "- `200` — Object found, source returned.\n"
+        "- `404` — Object does not exist in SAP.\n"
+        "- `422` — Unsupported object type, blank identifier, or invalid max_lines.\n"
+        "- `503` — SAP connectivity failure or source data integrity error.\n"
+    ),
+)
+async def get_object_source(
+    object_type: str,
+    object_name: str,
+    max_lines: int = DEFAULT_MAX_SOURCE_LINES,
+    service: RepositoryObjectService = Depends(get_object_service),
+) -> RepositoryObjectSource:
+    try:
+        return await service.get_source(
+            object_type=object_type,
+            object_name=object_name,
+            max_lines=max_lines,
+        )
+    except ValueError as exc:
+        logger.warning(
+            "object_source_validation_error",
+            extra={"operation": "get_object_source", "detail": str(exc)},
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RepositoryObjectTypeNotSupportedError as exc:
+        logger.warning(
+            "object_source_unsupported_type",
+            extra={
+                "operation": "get_object_source",
+                "object_type": exc.object_type,
+            },
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RepositoryObjectNotFoundError as exc:
+        logger.info(
+            "object_source_not_found",
+            extra={
+                "operation": "get_object_source",
+                "object_type": exc.object_type,
+                "object_name": exc.object_name,
+            },
+        )
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RepositorySourceDataIntegrityError as exc:
+        logger.error(
+            "object_source_integrity_error",
+            extra={
+                "operation": "get_object_source",
+                "component_type": exc.component_type,
+                "component_name": exc.component_name,
+                "line_no": exc.line_no,
+            },
+        )
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPConfigurationError as exc:
+        logger.warning("object_source_config_invalid", extra={"operation": "get_object_source"})
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SAPAuthenticationError as exc:
+        logger.warning("object_source_auth_failed", extra={"operation": "get_object_source"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPConnectionError as exc:
+        logger.warning("object_source_unreachable", extra={"operation": "get_object_source"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPFunctionExecutionError as exc:
+        logger.warning("object_source_function_failed", extra={"operation": "get_object_source"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPCommunicationError as exc:
+        logger.warning("object_source_communication_failed", extra={"operation": "get_object_source"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Phase 4+ — Object detail (stub — kept for backward compat, returns 501)
 # ---------------------------------------------------------------------------
 
 
 @router.post(
     "/repository/object",
-    summary="Retrieve a single repository object (Phase 4)",
+    summary="Retrieve a single repository object (Phase 4 stub)",
     description=(
-        "Returns full metadata and source details for a single SAP repository "
-        "object.  Phase 4 – not yet implemented."
+        "Legacy stub endpoint.  Use GET "
+        "/api/v1/repository/objects/{object_type}/{object_name}/metadata "
+        "or /source instead."
     ),
 )
 async def get_repository_object(
     key: ObjectKey,
-    service: RepositoryService = Depends(repository_service),
+    service: RepositoryService = Depends(get_discovery_service),
 ):
     try:
         return await service.get_object(key)
