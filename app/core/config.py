@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "SAP Repository Intelligence Layer"
-    app_version: str = "0.4.0"
+    app_version: str = "0.7.0"
     app_env: Literal["local", "btp", "test"] = "local"
     log_level: str = "INFO"
 
@@ -124,6 +124,96 @@ class Settings(BaseSettings):
     local_export_root: str = "./exports"
 
     auth_mode: Literal["disabled", "xsuaa"] = "disabled"
+
+    # ------------------------------------------------------------------
+    # Phase 5 — Bulk Extraction settings
+    # ------------------------------------------------------------------
+    #: Maximum number of objects allowed in a single synchronous bulk extraction.
+    #: Override via NCOREIQ_BULK_MAX_OBJECTS env var.
+    ncoreiq_bulk_max_objects: int = Field(default=250, ge=1)
+
+    #: Number of concurrent SAP requests during bulk extraction.
+    #: Override via NCOREIQ_BULK_CONCURRENCY env var.
+    ncoreiq_bulk_concurrency: int = Field(default=3, ge=1, le=5)
+
+    #: Hard ceiling on aggregate source lines across the whole extraction.
+    #: Override via NCOREIQ_BULK_MAX_TOTAL_SOURCE_LINES env var.
+    ncoreiq_bulk_max_total_source_lines: int = Field(default=250_000, ge=1)
+
+    #: Temporary export directory (used if in-memory streaming is insufficient).
+    #: Override via NCOREIQ_BULK_EXPORT_DIR env var.
+    ncoreiq_bulk_export_dir: str | None = None
+
+    # ------------------------------------------------------------------
+    # Phase 6 — Extraction Job settings
+    # ------------------------------------------------------------------
+    #: Number of background job worker tasks.
+    #: Override via NCOREIQ_JOB_WORKERS env var.
+    ncoreiq_job_workers: int = Field(default=2, ge=1, le=10)
+
+    #: Seconds between worker poll cycles when idle.
+    #: Override via NCOREIQ_JOB_POLL_INTERVAL_SECONDS env var.
+    ncoreiq_job_poll_interval_seconds: float = Field(default=2.0, ge=0.5)
+
+    #: Seconds a worker lease is valid without renewal.
+    #: Override via NCOREIQ_JOB_LEASE_SECONDS env var.
+    ncoreiq_job_lease_seconds: int = Field(default=120, ge=10)
+
+    #: Seconds between heartbeat renewals while RUNNING.
+    #: Override via NCOREIQ_JOB_HEARTBEAT_SECONDS env var.
+    ncoreiq_job_heartbeat_seconds: int = Field(default=30, ge=5)
+
+    #: Days to retain job metadata after terminal state.
+    #: Override via NCOREIQ_JOB_RETENTION_DAYS env var.
+    ncoreiq_job_retention_days: int = Field(default=7, ge=1)
+
+    #: Days to retain job artifacts.
+    #: Override via NCOREIQ_ARTIFACT_RETENTION_DAYS env var.
+    ncoreiq_artifact_retention_days: int = Field(default=7, ge=1)
+
+    #: Directory where job export artifacts are stored.
+    #: Override via NCOREIQ_JOB_ARTIFACT_DIR env var.
+    ncoreiq_job_artifact_dir: str = Field(default="./job_artifacts")
+
+    #: SQLite database file path for the job store.
+    #: Override via NCOREIQ_JOB_DB_PATH env var.
+    ncoreiq_job_db_path: str = Field(default="./ncoreiq_jobs.db")
+
+    #: Maximum number of jobs returned by list endpoint.
+    #: Override via NCOREIQ_JOB_MAX_LIST_LIMIT env var.
+    ncoreiq_job_max_list_limit: int = Field(default=200, ge=1)
+
+    #: Disable background executor workers (set true during automated tests
+    #: to prevent live SAP connection attempts from background workers).
+    #: Override via NCOREIQ_DISABLE_EXECUTOR env var.
+    ncoreiq_disable_executor: bool = Field(default=False)
+
+    # ------------------------------------------------------------------
+    # Phase 7 — MCP Server settings
+    # ------------------------------------------------------------------
+    #: Enable/disable the MCP server entry point.
+    ncoreiq_mcp_enabled: bool = Field(default=True)
+
+    #: MCP server name exposed in the protocol handshake.
+    ncoreiq_mcp_server_name: str = Field(default="N-CoreIQ")
+
+    #: MCP server version (shown to clients).
+    ncoreiq_mcp_server_version: str = Field(default="0.7.0")
+
+    #: Default transport: stdio | streamable_http
+    ncoreiq_mcp_transport: str = Field(default="stdio")
+
+    #: Maximum source lines returned by get_object_source MCP tool.
+    ncoreiq_mcp_max_source_lines: int = Field(default=500, ge=1, le=5000)
+
+    #: Maximum search results returned by search_repository MCP tool.
+    ncoreiq_mcp_max_search_results: int = Field(default=100, ge=1, le=1000)
+
+    #: Maximum job list results returned by list_extraction_jobs MCP tool.
+    ncoreiq_mcp_max_job_list_results: int = Field(default=20, ge=1, le=100)
+
+    #: Tool-level timeout in seconds (advisory — individual tools may enforce shorter).
+    ncoreiq_mcp_tool_timeout_seconds: int = Field(default=120, ge=10)
 
     def model_dump(self, *args, **kwargs):  # type: ignore[override]
         """Serialize settings with the SAP passwords always redacted.

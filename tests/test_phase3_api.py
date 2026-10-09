@@ -360,7 +360,7 @@ def test_health_endpoint_still_returns_200():
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["version"] == "0.3.0"
+    assert data["version"] == "0.5.0"
 
 
 def test_health_response_has_expected_fields():

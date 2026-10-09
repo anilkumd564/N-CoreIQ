@@ -68,12 +68,14 @@ class RepositorySearchResponse(BaseModel):
         description="SAP client used for the discovery call.",
     )
 
-    criteria: SearchCriteria = Field(
-        description="Effective search criteria forwarded to the ECC RFC."
+    criteria: SearchCriteria | None = Field(
+        default=None,
+        description="Effective search criteria forwarded to the ECC RFC.",
     )
 
-    statistics: SearchStatistics = Field(
-        description="Numeric summary of the discovery operation."
+    statistics: SearchStatistics | None = Field(
+        default=None,
+        description="Numeric summary of the discovery operation.",
     )
 
     truncated: bool = Field(
@@ -128,3 +130,21 @@ class HealthResult(BaseModel):
     app: str = Field(description="Application name.")
     version: str = Field(description="Application version (semver).")
     environment: str = Field(description="Deployment environment, e.g. 'local'.")
+
+    # Phase 6 — optional job subsystem health (None when job subsystem unavailable)
+    job_store: str | None = Field(
+        default=None,
+        description="Job store health: 'healthy' or 'unavailable'.",
+    )
+    worker_running: bool | None = Field(
+        default=None,
+        description="True when at least one background job worker is active.",
+    )
+    queued_jobs: int | None = Field(
+        default=None,
+        description="Number of jobs currently queued.",
+    )
+    running_jobs: int | None = Field(
+        default=None,
+        description="Number of jobs currently running.",
+    )

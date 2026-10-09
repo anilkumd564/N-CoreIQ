@@ -107,7 +107,8 @@ class RepositoryObject(BaseModel):
     sap_object_type: str = Field(
         description="Native SAP object type from TADIR (e.g. 'PROG', 'CLAS').",
     )
-    friendly_type: str = Field(
+    friendly_type: str | None = Field(
+        default=None,
         description="Human-readable object type name (e.g. 'PROGRAM', 'CLASS').",
     )
     object_name: str = Field(

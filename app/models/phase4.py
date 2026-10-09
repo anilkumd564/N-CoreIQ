@@ -11,7 +11,7 @@ uppercase, strip indentation, or collapse whitespace on source lines.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +183,10 @@ class RepositorySourceComponent(BaseModel):
 
     component_type: str
     component_name: str
-    line_count: int
+    line_count: int | None = Field(
+        default=None,
+        description="Number of source lines; computed from lines if not supplied.",
+    )
     lines: list[RepositorySourceLine]
     source_text: str | None = Field(
         default=None,
@@ -192,6 +195,12 @@ class RepositorySourceComponent(BaseModel):
             "Informational; lines[] is authoritative."
         ),
     )
+
+    @model_validator(mode="after")
+    def _compute_line_count(self) -> "RepositorySourceComponent":
+        if self.line_count is None:
+            self.line_count = len(self.lines)
+        return self
 
 
 # ---------------------------------------------------------------------------

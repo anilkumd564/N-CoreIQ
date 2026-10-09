@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 
 from app.core.config import Settings, get_settings
 from app.models.requests import ObjectKey, RepositorySearchRequest
@@ -34,6 +35,12 @@ from app.models.phase4 import (
     RepositoryObjectMetadata,
     RepositoryObjectSource,
 )
+from app.models.phase5 import (
+    BulkExtractionRequest,
+    BulkExtractionResult,
+    BulkExportRequest,
+    ExportFormat,
+)
 from app.sap.exceptions import (
     RepositoryObjectNotFoundError,
     RepositoryObjectTypeNotSupportedError,
@@ -50,6 +57,8 @@ from app.sap.exceptions import (
 )
 from app.services.repository import RepositoryService
 from app.services.object_service import RepositoryObjectService, get_object_service
+from app.services.bulk_extraction import BulkExtractionService
+from app.services.export import RepositoryExportService, get_export_service
 
 logger = logging.getLogger("app.api.routes")
 
@@ -59,6 +68,14 @@ router = APIRouter()
 def get_discovery_service(settings: Settings = Depends(get_settings)) -> RepositoryService:
     """FastAPI dependency that constructs a :class:`RepositoryService` for discovery."""
     return RepositoryService(build_sap_connection_provider(settings))
+
+
+def get_bulk_extraction_service(
+    settings: Settings = Depends(get_settings),
+) -> BulkExtractionService:
+    """FastAPI dependency for BulkExtractionService."""
+    object_service = RepositoryObjectService(build_sap_connection_provider(settings))
+    return BulkExtractionService(object_service=object_service, settings=settings)
 
 
 # Keep the old name as an alias so any existing internal references still resolve.
@@ -75,17 +92,36 @@ repository_service = get_discovery_service
     response_model=HealthResult,
     summary="Application health check",
     description=(
-        "Returns the application name, version, and environment.  "
+        "Returns the application name, version, environment, and optional "
+        "Phase 6 job subsystem diagnostics.  "
         "Does not require a live SAP ECC connection."
     ),
 )
-async def health(settings: Settings = Depends(get_settings)) -> HealthResult:
-    return HealthResult(
+async def health(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> HealthResult:
+    result = HealthResult(
         status="ok",
         app=settings.app_name,
         version=settings.app_version,
         environment=settings.app_env,
     )
+    # Phase 6 — add job subsystem health when available.
+    # A failure in the job subsystem must NOT cause overall health to fail.
+    try:
+        job_service = getattr(request.app.state, "job_service", None)
+        executor = getattr(request.app.state, "executor", None)
+        if job_service is not None:
+            job_health = job_service.health_check()
+            result.job_store = job_health.get("job_store", "unknown")
+            result.queued_jobs = job_health.get("queued_jobs", 0)
+            result.running_jobs = job_health.get("running_jobs", 0)
+        if executor is not None:
+            result.worker_running = getattr(executor, "is_running", False)
+    except Exception:
+        logger.warning("health_job_subsystem_check_failed", exc_info=True)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -493,6 +529,140 @@ async def get_object_source(
     except SAPCommunicationError as exc:
         logger.warning("object_source_communication_failed", extra={"operation": "get_object_source"})
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Bulk Extraction
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/repository/extract",
+    response_model=BulkExtractionResult,
+    summary="Bulk extract SAP repository objects",
+    tags=["repository", "phase5"],
+    description=(
+        "Extracts metadata and/or source for multiple SAP repository objects in "
+        "a single synchronous operation.  Objects may be specified explicitly or "
+        "resolved via a search criterion.\n\n"
+        "**Selection methods:**\n"
+        "- `objects` — explicit list of `{object_type, object_name}` pairs\n"
+        "- `search` — search criteria forwarded to Phase 3 discovery\n\n"
+        "Exactly one of `objects` or `search` must be supplied.\n\n"
+        f"**Synchronous limit:** configurable (default 250 objects).\n\n"
+        "**Status codes:**\n"
+        "- `200` — Extraction completed (possibly with per-object errors).\n"
+        "- `422` — Invalid request (missing selection, both supplied, limits exceeded).\n"
+        "- `503` — SAP connectivity failure during discovery phase.\n"
+    ),
+)
+async def bulk_extract(
+    request: BulkExtractionRequest,
+    service: BulkExtractionService = Depends(get_bulk_extraction_service),
+) -> BulkExtractionResult:
+    try:
+        return await service.extract(request)
+    except ValueError as exc:
+        logger.warning(
+            "bulk_extract_validation_error",
+            extra={"operation": "bulk_extraction", "detail": str(exc)},
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SAPAuthenticationError as exc:
+        logger.warning("bulk_extract_auth_failed", extra={"operation": "bulk_extraction"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPConnectionError as exc:
+        logger.warning("bulk_extract_unreachable", extra={"operation": "bulk_extraction"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPCommunicationError as exc:
+        logger.warning("bulk_extract_communication_failed", extra={"operation": "bulk_extraction"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Bulk Export
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/repository/export",
+    summary="Bulk extract and export SAP repository objects",
+    tags=["repository", "phase5"],
+    description=(
+        "Performs bulk extraction (identical to `/extract`) and then serialises "
+        "the result to the requested format.\n\n"
+        "**Formats:**\n"
+        "- `json` — `application/json` UTF-8 document\n"
+        "- `zip`  — `application/zip` archive with manifest, metadata, source, "
+        "and component files\n\n"
+        "**Selection methods** and **limits** are identical to `/extract`.\n\n"
+        "**ZIP structure:**\n"
+        "```\n"
+        "ncoreiq-export/\n"
+        "├── manifest.json\n"
+        "└── objects/\n"
+        "    ├── PROG/ZREPORT1/metadata.json\n"
+        "    ├── PROG/ZREPORT1/source.json\n"
+        "    └── PROG/ZREPORT1/source/PROGRAM__ZREPORT1.abap\n"
+        "```\n\n"
+        "**Status codes:**\n"
+        "- `200` — Export produced (may contain per-object errors in manifest).\n"
+        "- `422` — Invalid request.\n"
+        "- `503` — SAP connectivity failure.\n"
+    ),
+    responses={
+        200: {
+            "content": {
+                "application/json": {},
+                "application/zip": {},
+            },
+            "description": "Export file (JSON or ZIP)",
+        }
+    },
+)
+async def bulk_export(
+    request: BulkExportRequest,
+    bulk_service: BulkExtractionService = Depends(get_bulk_extraction_service),
+    export_service: RepositoryExportService = Depends(get_export_service),
+) -> Response:
+    # 1. Run extraction — BulkExportRequest inherits BulkExtractionRequest;
+    #    pass it directly (the extra `format` field is ignored by the service).
+    try:
+        result = await bulk_service.extract(request.to_extraction_request())
+    except ValueError as exc:
+        logger.warning(
+            "bulk_export_validation_error",
+            extra={"operation": "bulk_export", "detail": str(exc)},
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SAPAuthenticationError as exc:
+        logger.warning("bulk_export_auth_failed", extra={"operation": "bulk_export"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPConnectionError as exc:
+        logger.warning("bulk_export_unreachable", extra={"operation": "bulk_export"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPCommunicationError as exc:
+        logger.warning("bulk_export_communication_failed", extra={"operation": "bulk_export"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # 2. Serialise — export service does NOT re-query SAP
+    filename = export_service.export_filename(result, request.format)
+
+    if request.format == ExportFormat.ZIP:
+        content = export_service.to_zip_bytes(result)
+        media_type = "application/zip"
+    else:
+        content = export_service.to_json_bytes(result)
+        media_type = "application/json"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Extraction-Id": result.extraction_id,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
