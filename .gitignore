@@ -1,9 +1,16 @@
+# Environment & secrets
 .env
+
+# Python artifacts
 .venv/
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Exports / runtime output
 exports/
+
+# IDE
 .vscode/
 .idea/
 
@@ -16,31 +23,6 @@ dist/
 
 # Job artifacts (runtime output)
 job_artifacts/
-
-# Test output text files
-test_*.txt
-frontend_test_*.txt
-frontend_vitest_*.txt
-
-# graphify-axet
-.graphify/
-
-# Local Python runtime/binary artifacts (not part of project source)
-python311/
-py37embed/
-python379_embed.zip
-python312.exe
-get-pip.py
-pyrfc_meta.json
-pyrfc_pypi.json
-SAP_Repository_Intelligence_Layer_v0.1.zip
-
-# Node
-node_modules/
-
-# Runtime / job artifacts
-job_artifacts/
-*.db
 
 # Test output logs
 test_*.txt
@@ -59,3 +41,16 @@ diag_*.txt
 extract_*.txt
 win_certs.txt
 uvicorn*.log
+
+# Graphify knowledge graph cache
+.graphify/
+
+# Local Python runtime/binary artifacts (not part of project source)
+python311/
+py37embed/
+python379_embed.zip
+python312.exe
+get-pip.py
+pyrfc_meta.json
+pyrfc_pypi.json
+SAP_Repository_Intelligence_Layer_v0.1.zip
