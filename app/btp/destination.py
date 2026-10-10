@@ -1,4 +1,4 @@
-"""Phase 9 — SAP Destination Service resolver.
+﻿"""Phase 9 â€” SAP Destination Service resolver.
 
 Responsibilities:
 - Obtain destination configuration from SAP BTP Destination Service
@@ -9,13 +9,13 @@ Responsibilities:
 
 Architecture:
     N-CoreIQ
-      → DestinationResolver (this module)
-        → BTP Destination Service REST API
-          → Destination configuration
-            → ODataSAPConnectionProvider (configured)
-              → Connectivity Service proxy (if OnPremise)
-                → Cloud Connector
-                  → SAP ECC
+      â†’ DestinationResolver (this module)
+        â†’ BTP Destination Service REST API
+          â†’ Destination configuration
+            â†’ ODataSAPConnectionProvider (configured)
+              â†’ Connectivity Service proxy (if OnPremise)
+                â†’ Cloud Connector
+                  â†’ SAP ECC
 
 The resolved SapODataSettings is passed back to ODataSAPConnectionProvider.
 Repository services are NEVER aware of the destination name or BTP topology.
@@ -241,7 +241,7 @@ class DestinationResolver:
         """Resolve a named SAP Destination, with caching.
 
         Args:
-            destination_name: The SAP Destination name (e.g. NCOREIQ_ECC)
+            destination_name: The SAP Destination name (e.g. NC1_ODATA)
 
         Returns:
             ResolvedDestination with all connectivity parameters populated.
@@ -295,7 +295,7 @@ class DestinationResolver:
         auth_type = dest_props.get("Authentication", _AUTH_NO_AUTH)
         proxy_type = dest_props.get("ProxyType", _PROXY_INTERNET)
 
-        # Extract SAP client — destination may override settings value
+        # Extract SAP client â€” destination may override settings value
         sap_client = dest_props.get("sap-client") or dest_props.get("SAPClient")
         if not sap_client:
             # Fall back to settings value

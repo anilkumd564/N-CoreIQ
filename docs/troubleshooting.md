@@ -1,4 +1,4 @@
-# N-CoreIQ — Troubleshooting Guide (Version 1.0.0)
+﻿# N-CoreIQ â€” Troubleshooting Guide (Version 1.0.0)
 
 ## Quick Diagnostics
 
@@ -34,7 +34,7 @@ curl http://localhost:8000/api/v1/repository/jobs?limit=10
 |---------|-------|--------|
 | Search returns empty result | Package doesn't exist | Verify package name in SAP (SE80) |
 | Search returns empty result | Object type filter too restrictive | Remove `object_types` filter |
-| Search returns empty result | No Z*/Y* objects in package | Normal — package may contain only standard objects |
+| Search returns empty result | No Z*/Y* objects in package | Normal â€” package may contain only standard objects |
 | `VALIDATION_ERROR` | No selector supplied | Provide `packages`, `name_patterns`, or set `all_custom_objects=true` |
 | `SAP_OBJECT_NOT_FOUND` | Package not found | Verify package name (case-insensitive, auto-uppercased) |
 
@@ -46,7 +46,7 @@ curl http://localhost:8000/api/v1/repository/jobs?limit=10
 | Source truncated | Exceeds `max_lines` | Increase `max_lines` parameter (up to 5000) |
 | `REPOSITORY_OBJECT_NOT_FOUND` | Object doesn't exist | Verify object name in SAP (SE80) |
 | Empty source | DDIC object with no source | DDIC objects return technical definitions, not ABAP source |
-| Source contains ??? characters | Encoding issue | Source is UTF-8; SAP uses Latin-1 internally — contact support |
+| Source contains ??? characters | Encoding issue | Source is UTF-8; SAP uses Latin-1 internally â€” contact support |
 
 ### Dependency Intelligence
 
@@ -56,13 +56,13 @@ curl http://localhost:8000/api/v1/repository/jobs?limit=10
 | Dependency response empty | FM Z_MCP_REPO_DEPENDENCIES not deployed | Deploy latest SAP transport |
 | `DEPENDENCY_LIMIT_EXCEEDED` | Traversal depth/nodes exceeded limits | Reduce `max_depth` or `max_nodes` |
 | `REVERSE_SCOPE_TOO_LARGE` | Too many candidates | Narrow scope with `packages` or `name_patterns` |
-| Dynamic dependencies missing | Expected — static analysis only | See known limitations |
+| Dynamic dependencies missing | Expected â€” static analysis only | See known limitations |
 
 ### Extraction Jobs
 
 | Symptom | Cause | Action |
 |---------|-------|--------|
-| Job stuck in RUNNING | Worker crashed or lease expired | Restart application — stale jobs auto-recover |
+| Job stuck in RUNNING | Worker crashed or lease expired | Restart application â€” stale jobs auto-recover |
 | Job stuck in QUEUED | No workers running | Check `NCOREIQ_DISABLE_EXECUTOR` is `false` |
 | `JOB_NOT_FOUND` | Job ID incorrect or expired | Check job ID; jobs expire after `NCOREIQ_JOB_RETENTION_DAYS` |
 | `ARTIFACT_NOT_FOUND` | Artifact expired | Re-run extraction job |
@@ -83,7 +83,7 @@ curl http://localhost:8000/api/v1/repository/jobs?limit=10
 
 | Symptom | Cause | Action |
 |---------|-------|--------|
-| Destination error | NCOREIQ_ECC destination missing | Create destination in BTP Destination service |
+| Destination error | NC1_ODATA destination missing | Create destination in BTP Destination service |
 | 502 from SAP via Cloud Connector | Cloud Connector not running | Start Cloud Connector; check CC administration |
 | 502 from SAP via Cloud Connector | System mapping missing | Add system mapping in Cloud Connector |
 | BTP XSUAA binding missing | Service not bound | `cf bind-service ncoreiq ncoreiq-xsuaa && cf restage ncoreiq` |

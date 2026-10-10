@@ -10,9 +10,12 @@ applications:
     env:
       APP_ENV: btp
       SAP_CONNECTION_MODE: btp
-      SAP_DESTINATION_NAME: ECC_DEV
+      # Canonical BTP SAP destination name. Must match the verified destination
+      # in the BTP subaccount Destination service (ProxyType=OnPremise via Cloud Connector).
+      SAP_DESTINATION_NAME: NC1_ODATA
       EXPORT_MODE: zip
       AUTH_MODE: xsuaa
+      NCOREIQ_MCP_TRANSPORT: streamable_http
     services:
       - sri-destination
       - sri-connectivity

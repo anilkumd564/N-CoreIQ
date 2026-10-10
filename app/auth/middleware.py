@@ -52,6 +52,30 @@ from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+
+def check_jwt_crypto_available() -> None:
+    """Verify PyJWT with RSA cryptographic support is importable.
+
+    Must be called at startup when app_env=btp and auth_mode=xsuaa.
+    Raises RuntimeError if the dependency is absent so the application
+    refuses to start rather than silently falling back to structure-only
+    JWT verification in production.
+
+    In non-BTP modes the application continues with a warning (development
+    convenience).  BTP production MUST NOT use unverified JWT tokens.
+    """
+    try:
+        import jwt as _jwt  # noqa: F401
+        from jwt.algorithms import RSAAlgorithm  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "PyJWT with RSA cryptography support is required for BTP production mode "
+            "(APP_ENV=btp, AUTH_MODE=xsuaa) but is not installed. "
+            "Add to requirements: PyJWT[crypto]>=2.8,<3.0 and cryptography>=42.0. "
+            f"Import error: {exc}"
+        ) from exc
+
+
 # Paths exempt from authentication (always accessible)
 _AUTH_EXEMPT_PATHS = frozenset(
     {
@@ -255,11 +279,17 @@ def _validate_jwt_without_library(
         raise ValueError(f"JWT validation failed with all keys: {last_exc}")
 
     except ImportError:
-        # PyJWT not installed — do basic expiry + structure check only
-        # This is acceptable for development; BTP production requires PyJWT
+        # PyJWT is not installed.
+        # Development/test: fall back to structure-only check with a warning.
+        # BTP production (app_env=btp): check_jwt_crypto_available() is called
+        # at startup and will have already refused to start — this path is
+        # unreachable in production.  The guard below is a defence-in-depth
+        # measure in case the startup check is bypassed (e.g. unit tests that
+        # patch startup).
         logger.warning(
-            "jwt_library_unavailable — install PyJWT[crypto] for full JWT validation. "
-            "Performing structure-only check (development mode).",
+            "jwt_library_unavailable — PyJWT[crypto] not installed. "
+            "Falling back to structure-only JWT check (development mode only). "
+            "This path must NOT be reached in BTP production (app_env=btp).",
         )
 
         # Decode payload (no signature verification)

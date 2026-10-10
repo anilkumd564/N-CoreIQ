@@ -170,7 +170,26 @@ async def lifespan(app: FastAPI):
         # Allow app to start even if job subsystem fails; routes will return 503
 
     logger.info("event=startup_complete")
-    yield
+
+    # ------------------------------------------------------------------ #
+    # MCP SESSION MANAGER (streamable_http transport only)                #
+    # ------------------------------------------------------------------ #
+    # StreamableHTTPSessionManager.run() MUST be active before any /mcp
+    # requests arrive.  It creates the anyio task group that stateless
+    # request handling asserts on.  The Starlette sub-app returned by
+    # FastMCP.streamable_http_app() has its own lifespan, but Starlette
+    # does NOT propagate lifespan ASGI events to mounted sub-applications;
+    # only the root app receives them.  We therefore start the session
+    # manager explicitly here, wrapping the entire "app running" period.
+    _mcp_srv = getattr(app.state, "_mcp_server", None)
+    if _mcp_srv is not None:
+        logger.info("event=mcp_session_manager_starting transport=streamable_http")
+        async with _mcp_srv.mcp.session_manager.run():
+            logger.info("event=mcp_session_manager_started")
+            yield
+        logger.info("event=mcp_session_manager_stopped")
+    else:
+        yield
 
     # ------------------------------------------------------------------ #
     # SHUTDOWN                                                             #
@@ -213,6 +232,28 @@ def _validate_btp_startup(settings) -> None:
             "event=btp_mode_validation_ok connection_mode=%s",
             settings.sap_connection_mode,
         )
+
+    # ------------------------------------------------------------------ #
+    # JWT Crypto dependency check (BTP + XSUAA mode only)                 #
+    # ------------------------------------------------------------------ #
+    # BTP production mode MUST use full RS256 signature verification.
+    # Structure-only JWT fallback is blocked in BTP+xsuaa to prevent
+    # silently accepting forged tokens in production.
+    effective_auth = settings.auth.mode
+    if effective_auth == "disabled" and settings.auth_mode == "xsuaa":
+        effective_auth = "xsuaa"
+    if effective_auth == "xsuaa":
+        from app.auth.middleware import check_jwt_crypto_available
+        try:
+            check_jwt_crypto_available()
+            logger.info("event=jwt_crypto_available pyjwt=ok")
+        except RuntimeError as exc:
+            logger.error(
+                "event=jwt_crypto_unavailable error=%s "
+                "— BTP production cannot start without PyJWT[crypto]",
+                exc,
+            )
+            raise  # Hard fail — do not serve requests with unverified JWTs
 
 
 # ---------------------------------------------------------------------------
@@ -396,4 +437,37 @@ else:
     logger.info(
         "event=frontend_not_built path=%s — run: cd frontend && npm run build",
         str(_FRONTEND_DIST),
+    )
+
+# -----------------------------------------------------------------------
+# Phase 7 — MCP Streamable HTTP mount
+# Activated when NCOREIQ_MCP_TRANSPORT=streamable_http (default: stdio).
+# The FastMCP sub-app is mounted at /mcp; all existing FastAPI middleware
+# (XSUAA auth, CORS, correlation-ID, security headers) applies automatically
+# because Starlette middleware wraps the entire app including sub-apps.
+# External endpoint: POST /mcp/
+# -----------------------------------------------------------------------
+
+if settings.ncoreiq_mcp_enabled and settings.ncoreiq_mcp_transport == "streamable_http":
+    from app.mcp.server import create_server as _create_mcp_server
+
+    _mcp_http_server = _create_mcp_server(settings)
+    # Call streamable_http_app() NOW so the session_manager is lazily created
+    # before the lifespan reads app.state._mcp_server.session_manager.
+    # streamable_http_path="/" inside FastMCP means the effective external
+    # endpoint is POST /mcp/ (no /mcp/mcp double-segment).
+    _mcp_starlette_app = _mcp_http_server.mcp.streamable_http_app()
+    app.state._mcp_server = _mcp_http_server
+    app.mount("/mcp", _mcp_starlette_app)
+    logger.info(
+        "event=mcp_http_mounted path=/mcp canonical_url=POST /mcp/ transport=streamable_http"
+        " stateless=True json_response=%s",
+        settings.ncoreiq_mcp_json_response,
+    )
+else:
+    logger.info(
+        "event=mcp_http_skipped transport=%s enabled=%s"
+        " — set NCOREIQ_MCP_TRANSPORT=streamable_http to enable HTTP transport",
+        settings.ncoreiq_mcp_transport,
+        settings.ncoreiq_mcp_enabled,
     )

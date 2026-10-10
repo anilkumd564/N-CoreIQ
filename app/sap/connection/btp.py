@@ -109,7 +109,7 @@ class BtpSapConnectionProvider(SapConnectionProvider):
         self._destination_name = (
             settings.btp.sap_destination_name
             or settings.sap_destination_name
-            or "NCOREIQ_ECC"
+            or "NC1_ODATA"
         )
 
     async def _get_odata_provider(self) -> ODataSAPConnectionProvider:

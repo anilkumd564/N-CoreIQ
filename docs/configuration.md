@@ -93,7 +93,7 @@ In Cloud Foundry, populated automatically from `VCAP_SERVICES`. For local BTP si
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `BTP__SAP_DESTINATION_NAME` | string | `NCOREIQ_ECC` | Destination name for SAP ECC |
+| `BTP__SAP_DESTINATION_NAME` | string | `NC1_ODATA` | Destination name for SAP ECC (ProxyType=OnPremise via Cloud Connector) |
 | `BTP__CLOUD_CONNECTOR_LOCATION_ID` | string | — | Cloud Connector location ID (multi-CC) |
 
 ---

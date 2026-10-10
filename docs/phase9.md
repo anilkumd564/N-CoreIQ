@@ -1,8 +1,8 @@
-# N-CoreIQ Phase 9 — SAP BTP Production Readiness
+﻿# N-CoreIQ Phase 9 â€” SAP BTP Production Readiness
 
 ## Overview
 
-Phase 9 makes N-CoreIQ deployable, secure, scalable, observable, and supportable on SAP BTP while preserving all Phase 1–8C functionality.
+Phase 9 makes N-CoreIQ deployable, secure, scalable, observable, and supportable on SAP BTP while preserving all Phase 1â€“8C functionality.
 
 **Version:** 0.9.0  
 **Status:** Production Ready (local mode) / BTP-Ready (requires bound services)
@@ -51,7 +51,7 @@ Users / Browser / MCP Clients
 | Mode | SAP Connectivity | Job Store | Artifact Store | Auth |
 |------|-----------------|-----------|----------------|------|
 | `local` | Direct HTTPS to SAP Gateway | SQLite | Local filesystem | disabled |
-| `btp` | BTP Destination → Connectivity → Cloud Connector | SQLite/DB | Local/Object Store | xsuaa |
+| `btp` | BTP Destination â†’ Connectivity â†’ Cloud Connector | SQLite/DB | Local/Object Store | xsuaa |
 | `test` | Mocked | In-memory | In-memory | disabled |
 
 Set via: `APP_ENV=local` / `APP_ENV=btp` / `APP_ENV=test`
@@ -86,7 +86,7 @@ SAP_ODATA__RETRY_ATTEMPTS=3
 ### SAP Connection (BTP mode)
 ```
 SAP_CONNECTION_MODE=btp
-BTP__SAP_DESTINATION_NAME=NCOREIQ_ECC
+BTP__SAP_DESTINATION_NAME=NC1_ODATA
 BTP__CLOUD_CONNECTOR_LOCATION_ID=     # optional
 # Credential values populated from VCAP_SERVICES by BTPServiceBindingResolver
 ```
@@ -141,11 +141,11 @@ In `APP_ENV=btp`, N-CoreIQ validates required bindings at startup:
 
 ### In BTP Subaccount Cockpit
 
-Create a destination named `NCOREIQ_ECC` (or configured value of `BTP__SAP_DESTINATION_NAME`):
+Create a destination named `NC1_ODATA` (or configured value of `BTP__SAP_DESTINATION_NAME`):
 
 | Field | Value |
 |-------|-------|
-| Name | `NCOREIQ_ECC` |
+| Name | `NC1_ODATA` |
 | Type | HTTP |
 | URL | `https://<sap-gateway-host>:44300` |
 | Authentication | BasicAuthentication |
@@ -205,7 +205,7 @@ Set `AUTH__MODE=disabled` (default) to skip authentication. All requests receive
 
 ### Liveness
 
-Always returns 200 if the process is running. Does NOT check SAP connectivity — a SAP outage must not restart healthy application instances.
+Always returns 200 if the process is running. Does NOT check SAP connectivity â€” a SAP outage must not restart healthy application instances.
 
 ### Readiness
 
@@ -246,7 +246,7 @@ Phase 9 implements BTP-compatible structured JSON logging.
   "request_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "correlation_id": "b3c4d5e6-...",
   "logger": "app.sap.connection.btp",
-  "message": "btp_provider_ping destination=NCOREIQ_ECC",
+  "message": "btp_provider_ping destination=NC1_ODATA",
   "operation": "btp_ping"
 }
 ```
@@ -272,9 +272,9 @@ All log records automatically redact fields matching secret patterns:
 ### TLS
 
 - Strict TLS verification enabled by default (`skip_tls_verify=false`)
-- BTP mode always uses strict TLS — no override possible
+- BTP mode always uses strict TLS â€” no override possible
 - Local mode supports `SAP_ODATA__CA_BUNDLE` for corporate CAs
-- `SAP_ODATA__SKIP_TLS_VERIFY=true` is available for local PoC only — **NEVER in production**
+- `SAP_ODATA__SKIP_TLS_VERIFY=true` is available for local PoC only â€” **NEVER in production**
 
 ### CORS
 
@@ -343,7 +343,7 @@ cf deploy mta_archives/ncoreiq_0.9.0.mtar
 
 **Resolution:**
 1. Verify Destination Service is bound: `cf services | grep destination`
-2. Verify destination `NCOREIQ_ECC` exists in BTP subaccount
+2. Verify destination `NC1_ODATA` exists in BTP subaccount
 3. Check `BTP__SAP_DESTINATION_NAME` matches the destination name
 
 ### Connectivity Service Unavailable
@@ -369,7 +369,7 @@ cf deploy mta_archives/ncoreiq_0.9.0.mtar
 
 **Resolution:**
 1. Verify Cloud Connector has the correct virtual host mapped to SAP Gateway
-2. Test connectivity: `cf ssh ncoreiq` → curl to Connectivity proxy
+2. Test connectivity: `cf ssh ncoreiq` â†’ curl to Connectivity proxy
 3. Check SAP Gateway service `/IWFND/MAINT_SERVICE` is active
 
 ### Job Stuck / Lease Expired
@@ -402,17 +402,17 @@ The lease recovery runs automatically at startup via `recover_stale_jobs()`. Res
 ## Multi-Instance Notes
 
 - Job leasing (`claimed_by`, `lease_expires_at`) prevents duplicate job processing
-- Artifact store uses local filesystem — use shared persistent storage for multi-instance BTP deployments
-- All API instances are stateless — no session affinity required for API calls
+- Artifact store uses local filesystem â€” use shared persistent storage for multi-instance BTP deployments
+- All API instances are stateless â€” no session affinity required for API calls
 
 ---
 
 ## Known Limitations (Phase 9)
 
-1. **SQLite job store** — suitable for single-instance BTP deployments. For multi-instance production, configure a managed relational database via `NCOREIQ_DB_URL`.
-2. **Local artifact store** — CF ephemeral filesystem. Configure object store for persistent multi-instance artifacts.
-3. **PyJWT optional** — Full RS256 signature validation requires `pip install PyJWT[crypto] cryptography`.
-4. **MCP remote exposure** — If MCP is exposed remotely, implement the same XSUAA auth as the REST API.
+1. **SQLite job store** â€” suitable for single-instance BTP deployments. For multi-instance production, configure a managed relational database via `NCOREIQ_DB_URL`.
+2. **Local artifact store** â€” CF ephemeral filesystem. Configure object store for persistent multi-instance artifacts.
+3. **PyJWT optional** â€” Full RS256 signature validation requires `pip install PyJWT[crypto] cryptography`.
+4. **MCP remote exposure** â€” If MCP is exposed remotely, implement the same XSUAA auth as the REST API.
 
 ---
 
@@ -420,24 +420,24 @@ The lease recovery runs automatically at startup via `recover_stale_jobs()`. Res
 
 | Gate | Status |
 |------|--------|
-| Local mode works | ✅ |
-| BTP mode infrastructure in place | ✅ |
-| Destination Service resolver | ✅ |
-| Connectivity Service support | ✅ |
-| Cloud Connector support | ✅ |
-| Strict TLS | ✅ |
-| XSUAA-compatible authentication | ✅ |
-| Authorization (4 roles) | ✅ |
-| Production JobStore (SQLite with leasing) | ✅ |
-| Stateless API instances | ✅ |
-| Liveness probe | ✅ |
-| Readiness probe | ✅ |
-| Structured logging | ✅ |
-| Correlation IDs | ✅ |
-| Secret redaction | ✅ |
-| Production error sanitization | ✅ |
-| CORS restricted | ✅ |
-| Security headers | ✅ |
-| MTA deployment descriptor | ✅ |
-| xs-security.json | ✅ |
+| Local mode works | âœ… |
+| BTP mode infrastructure in place | âœ… |
+| Destination Service resolver | âœ… |
+| Connectivity Service support | âœ… |
+| Cloud Connector support | âœ… |
+| Strict TLS | âœ… |
+| XSUAA-compatible authentication | âœ… |
+| Authorization (4 roles) | âœ… |
+| Production JobStore (SQLite with leasing) | âœ… |
+| Stateless API instances | âœ… |
+| Liveness probe | âœ… |
+| Readiness probe | âœ… |
+| Structured logging | âœ… |
+| Correlation IDs | âœ… |
+| Secret redaction | âœ… |
+| Production error sanitization | âœ… |
+| CORS restricted | âœ… |
+| Security headers | âœ… |
+| MTA deployment descriptor | âœ… |
+| xs-security.json | âœ… |
 | Phase 8B Repository Explorer preserved

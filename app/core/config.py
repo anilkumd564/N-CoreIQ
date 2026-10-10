@@ -13,7 +13,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -178,7 +178,7 @@ class BtpSettings(BaseModel):
     xsuaa: BtpXsuaaSettings = Field(default_factory=BtpXsuaaSettings)
     destination: BtpDestinationSettings = Field(default_factory=BtpDestinationSettings)
     connectivity: BtpConnectivitySettings = Field(default_factory=BtpConnectivitySettings)
-    sap_destination_name: str = "NCOREIQ_ECC"
+    sap_destination_name: str = "NC1_ODATA"
     cloud_connector_location_id: str | None = None
 
     def safe_dict(self) -> dict:
@@ -322,11 +322,33 @@ class Settings(BaseSettings):
     ncoreiq_mcp_enabled: bool = Field(default=True)
     ncoreiq_mcp_server_name: str = Field(default="N-CoreIQ")
     ncoreiq_mcp_server_version: str = Field(default="1.0.0")
+    # Transport: "stdio" (local/IDE) or "streamable_http" (BTP/remote).
+    # Validated — any other value raises a clear startup error.
     ncoreiq_mcp_transport: str = Field(default="stdio")
     ncoreiq_mcp_max_source_lines: int = Field(default=500, ge=1, le=5000)
     ncoreiq_mcp_max_search_results: int = Field(default=100, ge=1, le=1000)
     ncoreiq_mcp_max_job_list_results: int = Field(default=20, ge=1, le=100)
     ncoreiq_mcp_tool_timeout_seconds: int = Field(default=120, ge=10)
+    # Streamable HTTP — use JSON responses (true) or SSE (false).
+    # json_response=True is recommended for stateless_http=True (BTP multi-instance).
+    ncoreiq_mcp_json_response: bool = Field(default=True)
+    # DNS rebinding protection — list of allowed Host header values.
+    # Empty list disables the protection (default; safe behind CF routing).
+    # Example for local dev: ["localhost:8000", "127.0.0.1:8000"]
+    ncoreiq_mcp_allowed_hosts: list[str] = Field(default_factory=list)
+
+    @field_validator("ncoreiq_mcp_transport")
+    @classmethod
+    def validate_mcp_transport(cls, v: str) -> str:
+        """Reject unsupported MCP transport values at startup."""
+        _allowed = {"stdio", "streamable_http"}
+        if v not in _allowed:
+            raise ValueError(
+                f"NCOREIQ_MCP_TRANSPORT={v!r} is not a supported transport. "
+                f"Supported values: {sorted(_allowed)}. "
+                "Use 'stdio' for local/IDE use, 'streamable_http' for BTP/remote."
+            )
+        return v
 
     # ------------------------------------------------------------------
     # Phase 8 — Dependency Intelligence settings

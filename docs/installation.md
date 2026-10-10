@@ -1,4 +1,4 @@
-# N-CoreIQ — Installation Guide (Version 1.0.0)
+﻿# N-CoreIQ â€” Installation Guide (Version 1.0.0)
 
 ## Overview
 
@@ -40,20 +40,20 @@ N-CoreIQ provides two deployment modes:
 Import the N-CoreIQ transport into your SAP system. The transport contains:
 
 - **Function Group**: `Z_MCP_REPO` with function modules:
-  - `Z_MCP_REPO_PING` — connectivity test
-  - `Z_MCP_REPO_PACKAGES` — package hierarchy resolution
-  - `Z_MCP_REPO_DISCOVER` — repository object discovery
-  - `Z_MCP_REPO_GET_METADATA` — object metadata retrieval
-  - `Z_MCP_REPO_GET_SOURCE` — object source retrieval
-  - `Z_MCP_REPO_DEPENDENCIES` — dependency extraction
+  - `Z_MCP_REPO_PING` â€” connectivity test
+  - `Z_MCP_REPO_PACKAGES` â€” package hierarchy resolution
+  - `Z_MCP_REPO_DISCOVER` â€” repository object discovery
+  - `Z_MCP_REPO_GET_METADATA` â€” object metadata retrieval
+  - `Z_MCP_REPO_GET_SOURCE` â€” object source retrieval
+  - `Z_MCP_REPO_DEPENDENCIES` â€” dependency extraction
 
-- **Authorization Role**: `Z_NCOREIQ_ROLE` — grants read-only access to:
+- **Authorization Role**: `Z_NCOREIQ_ROLE` â€” grants read-only access to:
   - `S_RFC` for `Z_MCP_REPO_*` and `RFC_SYSTEM_INFO`
   - `S_TABU_DIS` for TADIR, repository tables (display only)
 
 - **DDIC Structures** (for dependency intelligence):
-  - `ZST_NCOREIQ_DEP_REL` — dependency relation structure
-  - `ZST_NCOREIQ_DEP_HDR` — dependency header structure
+  - `ZST_NCOREIQ_DEP_REL` â€” dependency relation structure
+  - `ZST_NCOREIQ_DEP_HDR` â€” dependency header structure
 
 ### 2.2 OData Service Activation
 
@@ -128,7 +128,7 @@ APP_ENV=local
 APP_VERSION=1.0.0
 LOG_LEVEL=INFO
 
-# SAP Connection (OData mode — recommended for local dev)
+# SAP Connection (OData mode â€” recommended for local dev)
 SAP_CONNECTION_MODE=odata
 SAP_ODATA__BASE_URL=https://your-sap-host:44300
 SAP_ODATA__USER=NCOREIQ_SVC
@@ -203,10 +203,10 @@ cf create-service destination lite ncoreiq-destination
 
 ### 5.3 Configure Destination
 
-In BTP Destination service, create a destination named `NCOREIQ_ECC`:
+In BTP Destination service, create a destination named `NC1_ODATA`:
 
 ```
-Name: NCOREIQ_ECC
+Name: NC1_ODATA
 Type: HTTP
 URL: https://virtual-host:virtual-port
 ProxyType: OnPremise
@@ -245,10 +245,10 @@ cf restage ncoreiq
 After deployment, verify:
 
 ```
-GET /health          → {"status": "ok", "version": "1.0.0", ...}
-GET /health/live     → {"status": "alive"}
-GET /health/ready    → {"status": "ready"}
-GET /api/v1/sap/ping → {"status": "connected", "system_id": "...", ...}
+GET /health          â†’ {"status": "ok", "version": "1.0.0", ...}
+GET /health/live     â†’ {"status": "alive"}
+GET /health/ready    â†’ {"status": "ready"}
+GET /api/v1/sap/ping â†’ {"status": "connected", "system_id": "...", ...}
 ```
 
 ---

@@ -17,11 +17,12 @@ truststore>=0.9,<1.0
 mcp>=1.0,<2.0
 
 ## Phase 9 — JWT validation for XSUAA
-## Required for BTP production deployments with AUTH_MODE=xsuaa
-## Install: pip install PyJWT[crypto] cryptography
-## Optional at runtime — falls back to structure-only check if absent
-## PyJWT>=2.8,<3.0
-## cryptography>=42.0,<45.0
+## Required for BTP production deployments with AUTH_MODE=xsuaa.
+## BTP mode with AUTH_MODE=xsuaa will FAIL at startup if these are absent.
+## Development/test fallback to structure-only check is explicitly blocked
+## when app_env=btp to prevent insecure JWT validation in production.
+PyJWT[crypto]>=2.8,<3.0
+cryptography>=42.0,<55.0
 
 ## Testing
 pytest>=8.3,<9.0

@@ -11,18 +11,19 @@
 ##
 ## Usage:
 ##   mbt build
-##   cf deploy mta_archives/ncoreiq_0.9.0.mtar
+##   cf deploy mta_archives/ncoreiq_1.0.0.mtar
 ##
 ## Prerequisites:
 ##   - SAP BTP Cloud Foundry space
 ##   - MBT (SAP Cloud MTA Build Tool): npm install -g mbt
 ##   - CF CLI with MTA plugin
-##   - Destination 'NCOREIQ_ECC' configured in BTP subaccount
+##   - Destination 'NC1_ODATA' configured in BTP Destination service
+##     (ProxyType=OnPremise, verified through SAP Cloud Connector)
 
 _schema-version: "3.1"
 ID: ncoreiq
 description: "N-CoreIQ — SAP ECC Repository Intelligence Platform"
-version: 0.9.0
+version: 1.0.0
 
 parameters:
   enable-parallel-deployments: true
@@ -51,6 +52,10 @@ modules:
     properties:
       APP_ENV: btp
       SAP_CONNECTION_MODE: btp
+      ## Canonical BTP SAP destination name.
+      ## ProxyType=OnPremise — routes through SAP Cloud Connector.
+      ## Must match the verified destination in the BTP subaccount Destination service.
+      SAP_DESTINATION_NAME: NC1_ODATA
       EXPORT_MODE: zip
       AUTH_MODE: xsuaa
       LOG_LEVEL: INFO
@@ -60,6 +65,9 @@ modules:
       NCOREIQ_MAX_RUNNING_JOBS_PER_INSTANCE: 2
       NCOREIQ_MAX_SAP_CONCURRENCY_PER_INSTANCE: 5
       NCOREIQ_JOB_WORKERS: 2
+      ## MCP transport — streamable_http for BTP remote MCP clients
+      ## Canonical endpoint: POST https://<route>/mcp/
+      NCOREIQ_MCP_TRANSPORT: streamable_http
       ## Artifact storage — use /tmp for BTP CF (ephemeral, see notes below)
       ## For production, configure object store via BTP Object Store service
       NCOREIQ_JOB_ARTIFACT_DIR: /tmp/ncoreiq_artifacts

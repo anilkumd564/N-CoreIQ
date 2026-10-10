@@ -15,6 +15,7 @@ import logging
 from typing import Annotated, Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
 from app.mcp.errors import MCPToolError, map_exception
@@ -63,6 +64,8 @@ class NCoreIQMCPServer:
             self._dep_max_candidates = min(getattr(settings, "ncoreiq_mcp_dep_max_candidates", 50), 50)
             name = getattr(settings, "ncoreiq_mcp_server_name", "N-CoreIQ")
             version = getattr(settings, "app_version", "1.0.0")
+            json_response = bool(getattr(settings, "ncoreiq_mcp_json_response", True))
+            allowed_hosts = list(getattr(settings, "ncoreiq_mcp_allowed_hosts", []))
         else:
             self._max_search = _DEFAULT_SEARCH
             self._max_source = _DEFAULT_SOURCE
@@ -74,8 +77,32 @@ class NCoreIQMCPServer:
             self._dep_max_candidates = 50
             name = "N-CoreIQ"
             version = "1.0.0"
+            json_response = True
+            allowed_hosts = []
 
         self._version = version
+
+        # ------------------------------------------------------------------
+        # Transport security (DNS rebinding protection).
+        # When allowed_hosts is non-empty: enable protection with the given list.
+        # When allowed_hosts is empty: disable protection (safe behind CF/BTP
+        # routing layer; also matches the MCP SDK's own default of disabled).
+        # Never use an unrestricted wildcard in authenticated production.
+        # ------------------------------------------------------------------
+        if allowed_hosts:
+            _transport_security = TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=allowed_hosts,
+            )
+            logger.info(
+                "event=mcp_transport_security_enabled allowed_hosts=%s", allowed_hosts
+            )
+        else:
+            # Disabled: no Host-header allowlist — rely on CF/BTP routing.
+            _transport_security = TransportSecuritySettings(
+                enable_dns_rebinding_protection=False,
+            )
+
         self.mcp = FastMCP(
             name=name,
             instructions=(
@@ -85,6 +112,22 @@ class NCoreIQMCPServer:
                 "Dependencies: get_dependencies → traverse_dependencies | find_dependents | analyze_dependency_impact. "
                 "Bulk extraction: start_extraction_job → poll get_extraction_job → get_extraction_result."
             ),
+            # streamable_http_path="/" so that when the Starlette sub-app is
+            # mounted at /mcp inside FastAPI the effective external path is
+            # POST /mcp/ (no double /mcp/mcp segment).
+            streamable_http_path="/",
+            # stateless_http=True: each HTTP request is independent — correct
+            # for BTP multi-instance horizontal scaling. No sticky sessions needed
+            # because none of the 15 tools use elicitation, sampling, or
+            # long-lived server-side session state.
+            stateless_http=True,
+            # json_response=True: return plain JSON instead of SSE for each
+            # request. Pairs naturally with stateless_http=True and avoids
+            # unnecessary SSE framing overhead.
+            json_response=json_response,
+            # transport_security: configured from NCOREIQ_MCP_ALLOWED_HOSTS.
+            # Default is protection disabled (safe behind BTP CF routing).
+            transport_security=_transport_security,
         )
         self._register_tools()
 
@@ -930,4 +973,8 @@ if __name__ == "__main__":
     import logging as _logging
     _logging.basicConfig(level="INFO")
     server = create_server()
-    asyncio.run(server.run_stdio())
+    transport = getattr(server._settings, "ncoreiq_mcp_transport", "stdio")
+    if transport == "streamable_http":
+        asyncio.run(server.run_streamable_http())
+    else:
+        asyncio.run(server.run_stdio())
