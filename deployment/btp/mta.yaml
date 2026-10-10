@@ -1,0 +1,100 @@
+## N-CoreIQ — SAP BTP Multi-Target Application Deployment Descriptor
+## Phase 9: Production-ready BTP deployment
+##
+## Modules:
+##   ncoreiq-backend   — FastAPI application (Python)
+##
+## Resources (BTP Service instances):
+##   ncoreiq-xsuaa       — SAP Authorization and Trust Management (XSUAA)
+##   ncoreiq-destination — SAP Destination Service
+##   ncoreiq-connectivity — SAP Connectivity Service
+##
+## Usage:
+##   mbt build
+##   cf deploy mta_archives/ncoreiq_0.9.0.mtar
+##
+## Prerequisites:
+##   - SAP BTP Cloud Foundry space
+##   - MBT (SAP Cloud MTA Build Tool): npm install -g mbt
+##   - CF CLI with MTA plugin
+##   - Destination 'NCOREIQ_ECC' configured in BTP subaccount
+
+_schema-version: "3.1"
+ID: ncoreiq
+description: "N-CoreIQ — SAP ECC Repository Intelligence Platform"
+version: 0.9.0
+
+parameters:
+  enable-parallel-deployments: true
+  keep-existing-routes: true
+
+modules:
+  ## -----------------------------------------------------------------------
+  ## N-CoreIQ Backend — FastAPI Python application
+  ## -----------------------------------------------------------------------
+  - name: ncoreiq-backend
+    type: python
+    path: ../..
+    parameters:
+      buildpack: python_buildpack
+      memory: 768M
+      disk-quota: 2G
+      instances: 1
+      health-check-type: http
+      health-check-http-endpoint: /health/live
+      health-check-timeout: 60
+      routes:
+        - route: ncoreiq.${default-domain}
+    build-parameters:
+      build-artifact-name: ncoreiq-backend
+      requires-runtime: true
+    properties:
+      APP_ENV: btp
+      SAP_CONNECTION_MODE: btp
+      EXPORT_MODE: zip
+      AUTH_MODE: xsuaa
+      LOG_LEVEL: INFO
+      ## Logging format: json for BTP log aggregation, text for local dev
+      LOGGING__FORMAT: json
+      ## Concurrency limits — conservative defaults for BTP
+      NCOREIQ_MAX_RUNNING_JOBS_PER_INSTANCE: 2
+      NCOREIQ_MAX_SAP_CONCURRENCY_PER_INSTANCE: 5
+      NCOREIQ_JOB_WORKERS: 2
+      ## Artifact storage — use /tmp for BTP CF (ephemeral, see notes below)
+      ## For production, configure object store via BTP Object Store service
+      NCOREIQ_JOB_ARTIFACT_DIR: /tmp/ncoreiq_artifacts
+      NCOREIQ_JOB_DB_PATH: /tmp/ncoreiq_jobs.db
+    requires:
+      - name: ncoreiq-xsuaa
+      - name: ncoreiq-destination
+      - name: ncoreiq-connectivity
+
+## -----------------------------------------------------------------------
+## BTP Service Resources
+## -----------------------------------------------------------------------
+
+resources:
+  ## XSUAA — Authorization and Trust Management Service
+  - name: ncoreiq-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: xs-security.json
+      config:
+        xsappname: ncoreiq-${org}-${space}
+        tenant-mode: dedicated
+
+  ## Destination Service
+  - name: ncoreiq-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite
+
+  ## Connectivity Service (required for Cloud Connector / on-premise ECC)
+  - name: ncoreiq-connectivity
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: connectivity
+      service-plan: lite

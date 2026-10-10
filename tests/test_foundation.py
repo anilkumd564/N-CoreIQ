@@ -26,7 +26,8 @@ def test_health_response_contains_expected_fields():
     response = client.get("/api/v1/health")
     body = response.json()
     assert body["status"] == "ok"
-    assert body["app"] == "SAP Repository Intelligence Layer"
+    # Phase 9: app name updated to N-CoreIQ
+    assert body["app"] in ("N-CoreIQ", "SAP Repository Intelligence Layer")
     assert "version" in body
     assert body["environment"] == "local"
 

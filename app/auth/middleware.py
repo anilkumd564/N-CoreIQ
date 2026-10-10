@@ -1,0 +1,399 @@
+"""Phase 9 — XSUAA JWT authentication middleware.
+
+Validates incoming JWTs centrally at the middleware layer.
+Application services receive AuthenticatedPrincipal objects.
+Raw JWT claims, tokens, and Authorization headers are NEVER
+passed to business services.
+
+JWT validation:
+    - Fetch JWKS from XSUAA URL + /token_keys (with caching)
+    - Verify signature, expiry, issuer, audience
+    - Extract scopes from 'scope' claim (space-separated or list)
+    - Map to N-CoreIQ roles
+    - Inject AuthenticatedPrincipal into request.state
+
+In 'disabled' auth mode:
+    - All requests receive ANONYMOUS_PRINCIPAL (full access)
+    - No JWT is required
+    - Suitable for local development ONLY
+
+XSUAA JWT structure:
+    {
+      "sub": "user@tenant",
+      "user_name": "user@domain",
+      "email": "user@domain",
+      "scope": "openid NCoreIQ.Viewer NCoreIQ.Analyst",
+      "iss": "https://subdomain.authentication.eu10.hana.ondemand.com/oauth/token",
+      "aud": ["sap-repository-intelligence", "..."],
+      "zid": "tenant-id",
+      "exp": 1234567890
+    }
+"""
+from __future__ import annotations
+
+import logging
+import time
+from typing import Any
+
+import httpx
+from fastapi import Request, Response
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.auth.principal import (
+    ANONYMOUS_PRINCIPAL,
+    SCOPE_ADMIN,
+    SCOPE_ANALYST,
+    SCOPE_OPERATOR,
+    SCOPE_VIEWER,
+    AuthenticatedPrincipal,
+)
+from app.core.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
+
+# Paths exempt from authentication (always accessible)
+_AUTH_EXEMPT_PATHS = frozenset(
+    {
+        "/health/live",
+        "/health/ready",
+        "/api/v1/health",
+        "/api/v1/health/live",
+        "/api/v1/health/ready",
+        "/",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+    }
+)
+
+# Map XSUAA scope suffixes to NCoreIQ scope names
+# XSUAA delivers scopes as "<xsappname>.<scope>" or just "<scope>"
+_SCOPE_MAP = {
+    "RepositoryViewer": SCOPE_VIEWER,
+    "RepositoryExtractor": SCOPE_ANALYST,
+    "RepositoryAdmin": SCOPE_ADMIN,
+    # Direct mapping (if xs-security.json uses NCoreIQ.* names)
+    "NCoreIQ.Viewer": SCOPE_VIEWER,
+    "NCoreIQ.Analyst": SCOPE_ANALYST,
+    "NCoreIQ.Operator": SCOPE_OPERATOR,
+    "NCoreIQ.Admin": SCOPE_ADMIN,
+    # Viewer includes Analyst/Operator as fallback
+    "Viewer": SCOPE_VIEWER,
+    "Analyst": SCOPE_ANALYST,
+    "Operator": SCOPE_OPERATOR,
+    "Admin": SCOPE_ADMIN,
+}
+
+
+class JWKSCache:
+    """Simple in-memory JWKS cache with TTL."""
+
+    def __init__(self, ttl_seconds: int = 300) -> None:
+        self._ttl = ttl_seconds
+        self._jwks: dict[str, Any] | None = None
+        self._fetched_at: float = 0.0
+
+    def get(self) -> dict[str, Any] | None:
+        if self._jwks and (time.monotonic() - self._fetched_at) < self._ttl:
+            return self._jwks
+        return None
+
+    def set(self, jwks: dict[str, Any]) -> None:
+        self._jwks = jwks
+        self._fetched_at = time.monotonic()
+
+    def invalidate(self) -> None:
+        self._jwks = None
+        self._fetched_at = 0.0
+
+
+# Module-level JWKS cache (shared across requests)
+_jwks_cache = JWKSCache()
+
+
+def _extract_token(request: Request) -> str | None:
+    """Extract Bearer token from Authorization header."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer ") or auth_header.startswith("bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+    return None
+
+
+def _parse_scopes_from_claims(claims: dict[str, Any], xsappname: str | None) -> list[str]:
+    """Extract and normalize scopes from JWT claims.
+
+    XSUAA delivers scopes as:
+    - Space-separated string: "openid xsappname.Viewer xsappname.Analyst"
+    - List: ["openid", "xsappname.Viewer"]
+    """
+    raw_scope = claims.get("scope", "")
+    if isinstance(raw_scope, str):
+        raw_scopes = raw_scope.split()
+    elif isinstance(raw_scope, list):
+        raw_scopes = [str(s) for s in raw_scope]
+    else:
+        raw_scopes = []
+
+    ncoreiq_scopes: list[str] = []
+    for raw in raw_scopes:
+        # Strip xsappname prefix if present
+        scope_suffix = raw
+        if xsappname and raw.startswith(f"{xsappname}."):
+            scope_suffix = raw[len(xsappname) + 1:]
+
+        # Direct match
+        if raw in _SCOPE_MAP:
+            mapped = _SCOPE_MAP[raw]
+            if mapped not in ncoreiq_scopes:
+                ncoreiq_scopes.append(mapped)
+        elif scope_suffix in _SCOPE_MAP:
+            mapped = _SCOPE_MAP[scope_suffix]
+            if mapped not in ncoreiq_scopes:
+                ncoreiq_scopes.append(mapped)
+
+    # Ensure higher roles include lower role scopes
+    if SCOPE_ADMIN in ncoreiq_scopes:
+        for s in [SCOPE_VIEWER, SCOPE_ANALYST, SCOPE_OPERATOR]:
+            if s not in ncoreiq_scopes:
+                ncoreiq_scopes.append(s)
+    elif SCOPE_OPERATOR in ncoreiq_scopes:
+        for s in [SCOPE_VIEWER, SCOPE_ANALYST]:
+            if s not in ncoreiq_scopes:
+                ncoreiq_scopes.append(s)
+    elif SCOPE_ANALYST in ncoreiq_scopes:
+        if SCOPE_VIEWER not in ncoreiq_scopes:
+            ncoreiq_scopes.append(SCOPE_VIEWER)
+
+    return ncoreiq_scopes
+
+
+def _build_principal_from_claims(
+    claims: dict[str, Any], xsappname: str | None
+) -> AuthenticatedPrincipal:
+    """Build AuthenticatedPrincipal from validated JWT claims."""
+    subject = str(claims.get("sub", claims.get("client_id", "unknown")))
+    user_name = claims.get("user_name") or claims.get("user_id")
+    display_name = str(user_name) if user_name else subject
+    email = claims.get("email")
+    tenant = claims.get("zid") or claims.get("tenant_id")
+
+    scopes = _parse_scopes_from_claims(claims, xsappname)
+
+    return AuthenticatedPrincipal(
+        subject=subject,
+        display_name=display_name,
+        email=str(email) if email else None,
+        scopes=scopes,
+        roles=list(scopes),
+        tenant=str(tenant) if tenant else None,
+        is_service=not bool(user_name),
+    )
+
+
+async def _fetch_jwks(jwks_uri: str) -> dict[str, Any]:
+    """Fetch JWKS from the XSUAA token_keys endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=True) as http:
+            response = await http.get(jwks_uri)
+            if response.status_code != 200:
+                raise ValueError(
+                    f"JWKS fetch failed: HTTP {response.status_code} from {jwks_uri}"
+                )
+            return response.json()  # type: ignore[no-any-return]
+    except httpx.RequestError as exc:
+        raise ValueError(f"Cannot reach JWKS endpoint {jwks_uri}: {exc}") from exc
+
+
+def _validate_jwt_without_library(
+    token: str,
+    jwks: dict[str, Any],
+    audience: str | None,
+    issuer: str | None,
+) -> dict[str, Any]:
+    """Validate JWT using PyJWT if available, otherwise do basic claims check.
+
+    Full RS256 signature verification requires PyJWT + cryptography.
+    If not installed, we do expiry + structure checks only (development mode).
+    In production BTP deployments, install: pip install PyJWT[crypto] cryptography
+    """
+    import base64
+    import json as _json
+    import struct
+
+    try:
+        import jwt as _jwt  # type: ignore[import]
+
+        # Full validation with PyJWT
+        keys = jwks.get("keys", [])
+        if not keys:
+            raise ValueError("JWKS contains no keys")
+
+        # Try each key
+        last_exc: Exception | None = None
+        for key_data in keys:
+            try:
+                from jwt.algorithms import RSAAlgorithm  # type: ignore[import]
+                public_key = RSAAlgorithm.from_jwk(key_data)
+                claims = _jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=["RS256"],
+                    audience=audience,
+                    issuer=issuer,
+                    options={
+                        "verify_exp": True,
+                        "verify_aud": bool(audience),
+                        "verify_iss": bool(issuer),
+                    },
+                )
+                return claims  # type: ignore[no-any-return]
+            except Exception as exc:
+                last_exc = exc
+                continue
+
+        raise ValueError(f"JWT validation failed with all keys: {last_exc}")
+
+    except ImportError:
+        # PyJWT not installed — do basic expiry + structure check only
+        # This is acceptable for development; BTP production requires PyJWT
+        logger.warning(
+            "jwt_library_unavailable — install PyJWT[crypto] for full JWT validation. "
+            "Performing structure-only check (development mode).",
+        )
+
+        # Decode payload (no signature verification)
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("JWT has invalid structure (expected 3 parts)")
+
+        # Add padding
+        payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+        try:
+            payload_bytes = base64.urlsafe_b64decode(payload_b64)
+            claims = _json.loads(payload_bytes)
+        except Exception as exc:
+            raise ValueError(f"Cannot decode JWT payload: {exc}") from exc
+
+        # Check expiry
+        exp = claims.get("exp")
+        if exp and time.time() > exp:
+            raise ValueError("JWT has expired")
+
+        return claims  # type: ignore[no-any-return]
+
+
+class XSUAAAuthMiddleware(BaseHTTPMiddleware):
+    """FastAPI middleware for XSUAA JWT validation.
+
+    In 'disabled' mode: injects ANONYMOUS_PRINCIPAL (full access, local dev).
+    In 'xsuaa' mode: validates JWT, rejects invalid/missing tokens with 401.
+
+    Exempt paths (liveness, readiness, health) always pass through.
+    """
+
+    def __init__(self, app, settings: Settings | None = None) -> None:
+        super().__init__(app)
+        self._settings = settings or get_settings()
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        # Always exempt certain paths
+        path = request.url.path
+        if path in _AUTH_EXEMPT_PATHS or path.startswith("/ui"):
+            request.state.principal = ANONYMOUS_PRINCIPAL
+            return await call_next(request)
+
+        auth_settings = self._settings.auth
+        # Synchronize with legacy auth_mode flat field
+        effective_mode = auth_settings.mode
+        if effective_mode == "disabled" and self._settings.auth_mode == "xsuaa":
+            effective_mode = "xsuaa"
+
+        if effective_mode == "disabled":
+            request.state.principal = ANONYMOUS_PRINCIPAL
+            return await call_next(request)
+
+        # XSUAA validation
+        token = _extract_token(request)
+        if not token:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": "AUTHENTICATION_REQUIRED",
+                    "message": "Authentication required. Provide a valid Bearer token.",
+                    "request_id": getattr(request.state, "request_id", None),
+                },
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        try:
+            # Determine JWKS URI
+            jwks_uri = auth_settings.jwks_uri
+            if not jwks_uri:
+                xsuaa_url = self._settings.btp.xsuaa.url
+                if xsuaa_url:
+                    jwks_uri = xsuaa_url.rstrip("/") + "/token_keys"
+                else:
+                    raise ValueError(
+                        "JWKS URI not configured. Set AUTH__JWKS_URI or BTP__XSUAA__URL."
+                    )
+
+            # Check cache
+            jwks = _jwks_cache.get()
+            if jwks is None:
+                jwks = await _fetch_jwks(jwks_uri)
+                _jwks_cache.set(jwks)
+
+            # Validate token
+            xsappname = self._settings.btp.xsuaa.xsappname
+            claims = _validate_jwt_without_library(
+                token,
+                jwks,
+                audience=auth_settings.audience or xsappname,
+                issuer=auth_settings.issuer,
+            )
+
+            principal = _build_principal_from_claims(claims, xsappname)
+            request.state.principal = principal
+
+            logger.debug(
+                "auth_principal_set subject=%s scopes=%s",
+                principal.subject,
+                principal.scopes,
+            )
+
+        except ValueError as exc:
+            logger.warning(
+                "auth_jwt_validation_failed error=%s path=%s",
+                str(exc),
+                path,
+            )
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": "INVALID_TOKEN",
+                    "message": "Authentication token is invalid or expired.",
+                    "request_id": getattr(request.state, "request_id", None),
+                },
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        except Exception:
+            logger.exception("auth_middleware_unexpected_error path=%s", path)
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": "AUTHENTICATION_ERROR",
+                    "message": "An error occurred during authentication.",
+                    "request_id": getattr(request.state, "request_id", None),
+                },
+            )
+
+        return await call_next(request)
+
+
+def get_principal(request: Request) -> AuthenticatedPrincipal:
+    """FastAPI dependency to extract the authenticated principal from request state."""
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        return ANONYMOUS_PRINCIPAL
+    return principal

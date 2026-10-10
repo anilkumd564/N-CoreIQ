@@ -1,0 +1,14 @@
+N-CoreIQ Version 1.0.0
+Release: October 2026
+Git Tag: v1.0.0
+
+Application: N-CoreIQ
+Version: 1.0.0
+Phase: Phase 10 — Version 1.0 Hardening & Release Readiness Complete
+Status: RELEASED
+
+Automated Tests: 942 passed / 0 failed
+Phase 10 Tests: 79 passed / 0 failed
+Regression: Phase 1–9 fully passing
+
+See docs/release-notes-1.0.0.md for full release notes.

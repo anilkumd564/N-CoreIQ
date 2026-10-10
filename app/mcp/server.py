@@ -62,7 +62,7 @@ class NCoreIQMCPServer:
             self._dep_max_edges = min(getattr(settings, "ncoreiq_mcp_dep_max_edges", 500), 500)
             self._dep_max_candidates = min(getattr(settings, "ncoreiq_mcp_dep_max_candidates", 50), 50)
             name = getattr(settings, "ncoreiq_mcp_server_name", "N-CoreIQ")
-            version = getattr(settings, "app_version", "0.8.0")
+            version = getattr(settings, "app_version", "1.0.0")
         else:
             self._max_search = _DEFAULT_SEARCH
             self._max_source = _DEFAULT_SOURCE
@@ -73,7 +73,7 @@ class NCoreIQMCPServer:
             self._dep_max_edges = 500
             self._dep_max_candidates = 50
             name = "N-CoreIQ"
-            version = "0.8.0"
+            version = "1.0.0"
 
         self._version = version
         self.mcp = FastMCP(

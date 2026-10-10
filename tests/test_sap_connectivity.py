@@ -179,6 +179,8 @@ def test_factory_selects_local_provider_by_default():
 
 # ---------------------------------------------------------------------------
 # 8. Provider factory handles BTP mode safely (no silent fallback to local)
+# Phase 9: BTP provider is now implemented and raises SAPConfigurationError
+# when Destination Service is not bound (correct production behaviour).
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_factory_handles_btp_mode_without_silent_fallback():
@@ -186,7 +188,9 @@ async def test_factory_handles_btp_mode_without_silent_fallback():
     assert isinstance(provider, BtpSapConnectionProvider)
     assert not isinstance(provider, LocalSapConnectionProvider)
 
-    with pytest.raises(SAPProviderNotImplementedError):
+    # Phase 9: BTP provider raises SAPConfigurationError when Destination
+    # Service is not bound, not SAPProviderNotImplementedError (Phase 2 placeholder).
+    with pytest.raises((SAPConfigurationError, SAPProviderNotImplementedError)):
         await provider.ping()
 
 

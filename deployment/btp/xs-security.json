@@ -1,33 +1,99 @@
 {
-  "xsappname": "sap-repository-intelligence",
+  "xsappname": "ncoreiq",
   "tenant-mode": "dedicated",
+  "description": "N-CoreIQ SAP ECC Repository Intelligence Platform — Authorization Configuration",
   "scopes": [
-    {"name": "$XSAPPNAME.RepositoryViewer", "description": "View repository metadata"},
-    {"name": "$XSAPPNAME.RepositoryExtractor", "description": "Extract repository objects"},
-    {"name": "$XSAPPNAME.RepositoryAdmin", "description": "Administer repository connectivity"}
+    {
+      "name": "$XSAPPNAME.NCoreIQ.Viewer",
+      "description": "Read-only access: SAP connectivity status, package browsing, repository search, metadata, source, dependencies"
+    },
+    {
+      "name": "$XSAPPNAME.NCoreIQ.Analyst",
+      "description": "Analyst access: all Viewer capabilities plus dependency traversal, reverse analysis, impact analysis, source export"
+    },
+    {
+      "name": "$XSAPPNAME.NCoreIQ.Operator",
+      "description": "Operator access: all Analyst capabilities plus job management, artifact operations, job cancellation and retry"
+    },
+    {
+      "name": "$XSAPPNAME.NCoreIQ.Admin",
+      "description": "Admin access: all Operator capabilities plus diagnostics, configuration visibility, administrative operations"
+    }
   ],
+  "attributes": [],
   "role-templates": [
     {
-      "name": "RepositoryViewer",
-      "description": "Repository read access",
-      "scope-references": ["$XSAPPNAME.RepositoryViewer"]
+      "name": "NCoreIQ_Viewer",
+      "description": "N-CoreIQ read-only access",
+      "scope-references": [
+        "$XSAPPNAME.NCoreIQ.Viewer"
+      ],
+      "attribute-references": []
     },
     {
-      "name": "RepositoryExtractor",
-      "description": "Repository extraction access",
+      "name": "NCoreIQ_Analyst",
+      "description": "N-CoreIQ analyst access (includes Viewer)",
       "scope-references": [
-        "$XSAPPNAME.RepositoryViewer",
-        "$XSAPPNAME.RepositoryExtractor"
+        "$XSAPPNAME.NCoreIQ.Viewer",
+        "$XSAPPNAME.NCoreIQ.Analyst"
+      ],
+      "attribute-references": []
+    },
+    {
+      "name": "NCoreIQ_Operator",
+      "description": "N-CoreIQ operator access (includes Analyst + Viewer)",
+      "scope-references": [
+        "$XSAPPNAME.NCoreIQ.Viewer",
+        "$XSAPPNAME.NCoreIQ.Analyst",
+        "$XSAPPNAME.NCoreIQ.Operator"
+      ],
+      "attribute-references": []
+    },
+    {
+      "name": "NCoreIQ_Admin",
+      "description": "N-CoreIQ administrator access (all capabilities)",
+      "scope-references": [
+        "$XSAPPNAME.NCoreIQ.Viewer",
+        "$XSAPPNAME.NCoreIQ.Analyst",
+        "$XSAPPNAME.NCoreIQ.Operator",
+        "$XSAPPNAME.NCoreIQ.Admin"
+      ],
+      "attribute-references": []
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "NCoreIQ Viewer",
+      "description": "Assigns N-CoreIQ read-only access to a user",
+      "role-template-references": [
+        "$XSAPPNAME.NCoreIQ_Viewer"
       ]
     },
     {
-      "name": "RepositoryAdmin",
-      "description": "Repository administration access",
-      "scope-references": [
-        "$XSAPPNAME.RepositoryViewer",
-        "$XSAPPNAME.RepositoryExtractor",
-        "$XSAPPNAME.RepositoryAdmin"
+      "name": "NCoreIQ Analyst",
+      "description": "Assigns N-CoreIQ analyst access to a user",
+      "role-template-references": [
+        "$XSAPPNAME.NCoreIQ_Analyst"
+      ]
+    },
+    {
+      "name": "NCoreIQ Operator",
+      "description": "Assigns N-CoreIQ operator access to a user",
+      "role-template-references": [
+        "$XSAPPNAME.NCoreIQ_Operator"
+      ]
+    },
+    {
+      "name": "NCoreIQ Administrator",
+      "description": "Assigns full N-CoreIQ administrator access to a user",
+      "role-template-references": [
+        "$XSAPPNAME.NCoreIQ_Admin"
       ]
     }
-  ]
+  ],
+  "oauth2-configuration": {
+    "token-validity": 43200,
+    "refresh-token-validity": 1800,
+    "redirect-uris": []
+  }
 }

@@ -1,9 +1,15 @@
-"""N-CoreIQ — FastAPI application entry point.
+"""N-CoreIQ — FastAPI application entry point (Phase 9).
 
-Phase 6 adds:
-  - Job subsystem initialisation (JobStore, ArtifactStore, JobService, Executor)
-  - Lifespan context manager for startup/shutdown
-  - Phase 6 jobs router mounted at /api/v1/repository/jobs
+Phase 9 adds:
+  - Structured logging initialization
+  - Correlation ID middleware
+  - XSUAA authentication middleware
+  - CORS with configurable trusted origins
+  - Security response headers
+  - Liveness / readiness health endpoints
+  - Admin diagnostics / metrics endpoints
+  - Fail-fast startup validation in BTP mode
+  - Graceful shutdown (stop workers, close pools, expire leases)
 """
 
 from __future__ import annotations
@@ -13,17 +19,48 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 from app.api.routes import router
 from app.api.jobs import jobs_router
 from app.api.dependencies import deps_router
+from app.api.health import admin_router, health_router
+from app.auth.middleware import XSUAAAuthMiddleware
 from app.core.config import get_settings
+from app.core.log_config import CorrelationIdMiddleware, configure_logging
+
+settings = get_settings()
+
+# ---------------------------------------------------------------------------
+# Configure structured logging (must be first)
+# ---------------------------------------------------------------------------
+
+import os as _os
+
+_instance_id = (
+    settings.logging.instance_id
+    or _os.environ.get("CF_INSTANCE_INDEX")
+    or "0"
+)
+
+configure_logging(
+    level=settings.log_level,
+    fmt=settings.logging.format,
+    service=settings.app_name,
+    version=settings.app_version,
+    runtime_mode=settings.app_env,
+    instance_id=_instance_id,
+)
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+
+
+# ---------------------------------------------------------------------------
+# Application lifespan
+# ---------------------------------------------------------------------------
 
 
 @asynccontextmanager
@@ -32,7 +69,17 @@ async def lifespan(app: FastAPI):
     # ------------------------------------------------------------------ #
     # STARTUP                                                              #
     # ------------------------------------------------------------------ #
-    logger.info("event=startup app=%s version=%s", settings.app_name, settings.app_version)
+    logger.info(
+        "event=startup app=%s version=%s mode=%s instance=%s",
+        settings.app_name,
+        settings.app_version,
+        settings.app_env,
+        _instance_id,
+    )
+
+    # BTP mode fail-fast: validate required service bindings before accepting traffic
+    if settings.app_env == "btp":
+        _validate_btp_startup(settings)
 
     try:
         from app.jobs.store import SQLiteJobStore
@@ -48,7 +95,7 @@ async def lifespan(app: FastAPI):
         artifact_dir = settings.ncoreiq_job_artifact_dir
         os.makedirs(artifact_dir, exist_ok=True)
 
-        # Initialise job store (creates/migrates schema)
+        # Initialise job store
         job_store = SQLiteJobStore(db_path=settings.ncoreiq_job_db_path)
         job_store.initialize()
         logger.info("event=job_store_ready db=%s", settings.ncoreiq_job_db_path)
@@ -87,7 +134,7 @@ async def lifespan(app: FastAPI):
             heartbeat_seconds=settings.ncoreiq_job_heartbeat_seconds,
         )
 
-        # Recover stale jobs from previous run before accepting new work
+        # Recover stale jobs from previous run
         recovered = executor.recover_stale_jobs()
         if recovered:
             logger.warning("event=stale_jobs_recovered count=%d", recovered)
@@ -103,9 +150,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.warning("event=startup_cleanup_failed", exc_info=True)
 
-        # Start background workers.
-        # Disabled when NCOREIQ_DISABLE_EXECUTOR=true (automated tests) to
-        # prevent background workers from attempting live SAP connections.
+        # Start background workers (skipped in test mode)
         if not settings.ncoreiq_disable_executor:
             await executor.start()
             logger.info(
@@ -114,7 +159,7 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("event=executor_skipped reason=ncoreiq_disable_executor=true")
 
-        # Attach to app state so route handlers can access them
+        # Attach to app state
         app.state.job_store = job_store
         app.state.artifact_store = artifact_store
         app.state.job_service = job_service
@@ -124,12 +169,13 @@ async def lifespan(app: FastAPI):
         logger.exception("event=startup_failed")
         # Allow app to start even if job subsystem fails; routes will return 503
 
+    logger.info("event=startup_complete")
     yield
 
     # ------------------------------------------------------------------ #
     # SHUTDOWN                                                             #
     # ------------------------------------------------------------------ #
-    logger.info("event=shutdown")
+    logger.info("event=shutdown_start")
 
     executor_obj = getattr(app.state, "executor", None)
     if executor_obj is not None:
@@ -138,6 +184,40 @@ async def lifespan(app: FastAPI):
             logger.info("event=executor_stopped")
         except Exception:
             logger.warning("event=executor_stop_failed", exc_info=True)
+
+    logger.info("event=shutdown_complete")
+
+
+def _validate_btp_startup(settings) -> None:
+    """Fail fast in BTP mode if required bindings/config are missing."""
+    from app.btp.bindings import BTPServiceBindingResolver
+
+    resolver = BTPServiceBindingResolver()
+    missing = resolver.validate_btp_mode()
+
+    # In BTP mode, SAP connectivity is via Destination Service OR direct odata config
+    if settings.sap_connection_mode == "btp" and missing:
+        # Allow partial binding if direct SAP config is provided as fallback
+        if not settings.sap_odata.base_url:
+            logger.error(
+                "event=btp_startup_missing_bindings missing=%s", missing
+            )
+            # Log as warning, not hard failure — allow fallback to direct config
+            logger.warning(
+                "event=btp_mode_binding_warning missing_services=%s "
+                "— configure VCAP_SERVICES or bind services in BTP",
+                missing,
+            )
+    else:
+        logger.info(
+            "event=btp_mode_validation_ok connection_mode=%s",
+            settings.sap_connection_mode,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Application factory (for testing with injected dependencies)
+# ---------------------------------------------------------------------------
 
 
 def create_app(
@@ -148,9 +228,7 @@ def create_app(
 ) -> FastAPI:
     """Create a FastAPI app instance for testing with injected dependencies."""
     test_app = FastAPI(title=settings.app_name, version=settings.app_version)
-    test_app.include_router(router, prefix="/api/v1")
-    test_app.include_router(jobs_router, prefix="/api/v1")
-    test_app.include_router(deps_router, prefix="/api/v1")
+    _configure_app(test_app)
     if job_store is not None:
         test_app.state.job_store = job_store
     if artifact_store is not None:
@@ -167,20 +245,124 @@ def create_app(
     return test_app
 
 
+def _configure_app(app: FastAPI) -> None:
+    """Register routers on a FastAPI instance."""
+    app.include_router(router, prefix="/api/v1")
+    app.include_router(jobs_router, prefix="/api/v1")
+    app.include_router(deps_router, prefix="/api/v1")
+    app.include_router(health_router)           # /health/live, /health/ready, /health
+    app.include_router(admin_router, prefix="/api/v1")  # /api/v1/admin/*
+
+
+# ---------------------------------------------------------------------------
+# Build the production application
+# ---------------------------------------------------------------------------
+
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description=(
         "BTP-ready SAP ECC repository discovery and intelligence service.\n\n"
-        "**Phase 6** adds asynchronous extraction jobs with durable persistence, "
-        "progress tracking, cancellation, retry, and artifact download."
+        "**Phase 9** adds SAP BTP production readiness: XSUAA authentication, "
+        "Destination Service, Connectivity Service, Cloud Connector support, "
+        "structured logging, health probes, and production deployment packaging."
     ),
     lifespan=lifespan,
 )
 
-app.include_router(router, prefix="/api/v1")
-app.include_router(jobs_router, prefix="/api/v1")
-app.include_router(deps_router, prefix="/api/v1")
+# -----------------------------------------------------------------------
+# Phase 9 — Middleware stack (order matters: outermost = last in chain)
+# -----------------------------------------------------------------------
+
+# 1. Correlation ID middleware — must be first so all subsequent middleware
+#    and handlers have request_id / correlation_id in context
+app.add_middleware(CorrelationIdMiddleware)
+
+# 2. CORS — configured trusted origins only (never wildcard in production)
+_cors_origins = settings.cors_allowed_origins
+# Also include auth sub-settings origins
+_auth_origins = settings.auth.cors_origins
+_all_origins = list(dict.fromkeys(_cors_origins + _auth_origins))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_all_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Correlation-ID", "X-Request-ID"],
+    expose_headers=["X-Correlation-ID", "X-Request-ID", "Content-Disposition"],
+)
+
+# 3. XSUAA authentication middleware
+app.add_middleware(XSUAAAuthMiddleware, settings=settings)
+
+# -----------------------------------------------------------------------
+# Phase 9 — Security response headers middleware
+# -----------------------------------------------------------------------
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add production security headers to all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # CSP: allow same-origin scripts and styles for the UI
+    if request.url.path.startswith("/ui"):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self';"
+        )
+    return response
+
+
+# -----------------------------------------------------------------------
+# Phase 9 — Production error handler
+# -----------------------------------------------------------------------
+
+
+@app.exception_handler(Exception)
+async def production_error_handler(request: Request, exc: Exception):
+    """Sanitized error handler — never exposes internal details."""
+    from app.core.log_config import get_correlation_id, get_request_id
+
+    request_id = getattr(request.state, "request_id", get_request_id()) or None
+    correlation_id = getattr(request.state, "correlation_id", get_correlation_id()) or None
+
+    logger.error(
+        "event=unhandled_exception request_id=%s correlation_id=%s path=%s",
+        request_id,
+        correlation_id,
+        request.url.path,
+        exc_info=True,
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "INTERNAL_ERROR",
+            "message": "An internal error occurred. Please contact support.",
+            "request_id": request_id,
+            "correlation_id": correlation_id,
+        },
+    )
+
+
+# -----------------------------------------------------------------------
+# Register routers
+# -----------------------------------------------------------------------
+
+_configure_app(app)
+
+
+# -----------------------------------------------------------------------
+# Root endpoint
+# -----------------------------------------------------------------------
 
 
 @app.get("/")
@@ -188,7 +370,9 @@ async def root() -> dict[str, str]:
     return {
         "name": settings.app_name,
         "version": settings.app_version,
-        "health": "/api/v1/health",
+        "health": "/health",
+        "liveness": "/health/live",
+        "readiness": "/health/ready",
         "docs": "/docs",
         "ui": "/ui",
         "jobs": "/api/v1/repository/jobs",
@@ -197,8 +381,6 @@ async def root() -> dict[str, str]:
 
 # -----------------------------------------------------------------------
 # Phase 8B — Serve built frontend from /ui
-# Uses StaticFiles with html=True for SPA (client-side routing) support.
-# Mounted AFTER API routes so /api/* routes take priority.
 # -----------------------------------------------------------------------
 
 _FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"

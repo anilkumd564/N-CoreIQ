@@ -1,18 +1,37 @@
+## N-CoreIQ — Python dependencies
+## Phase 9: SAP BTP Production Readiness
+
+## Core Framework
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.30,<1.0
 pydantic>=2.9,<3.0
 pydantic-settings>=2.5,<3.0
+
+## HTTP client (SAP OData + BTP service calls)
 httpx>=0.27,<1.0
+
+## TLS trust store (system CA bundle support)
 truststore>=0.9,<1.0
+
+## MCP Server
 mcp>=1.0,<2.0
+
+## Phase 9 — JWT validation for XSUAA
+## Required for BTP production deployments with AUTH_MODE=xsuaa
+## Install: pip install PyJWT[crypto] cryptography
+## Optional at runtime — falls back to structure-only check if absent
+## PyJWT>=2.8,<3.0
+## cryptography>=42.0,<45.0
+
+## Testing
 pytest>=8.3,<9.0
 pytest-asyncio>=0.24,<1.0
 pytest-mock>=3.14,<4.0
 
-# PyRFC (SAP NetWeaver RFC SDK adapter) is intentionally NOT listed here.
-# It requires the proprietary SAP NetWeaver RFC SDK native libraries to be
-# installed separately on the host (never bundled in this repository).
-# Install it manually in environments that need real local SAP connectivity:
-#   pip install pyrfc
-# The application and test suite run fully without it; missing PyRFC is
-# detected and reported as a controlled error (see app/sap/rfc_runtime.py).
+## PyRFC (SAP NetWeaver RFC SDK adapter) is intentionally NOT listed here.
+## It requires the proprietary SAP NetWeaver RFC SDK native libraries to be
+## installed separately on the host (never bundled in this repository).
+## Install it manually in environments that need real local SAP connectivity:
+##   pip install pyrfc
+## The application and test suite run fully without it; missing PyRFC is
+## detected and reported as a controlled error (see app/sap/rfc_runtime.py).
