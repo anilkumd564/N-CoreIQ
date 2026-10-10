@@ -11,11 +11,15 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from app.api.routes import router
 from app.api.jobs import jobs_router
+from app.api.dependencies import deps_router
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -146,6 +150,7 @@ def create_app(
     test_app = FastAPI(title=settings.app_name, version=settings.app_version)
     test_app.include_router(router, prefix="/api/v1")
     test_app.include_router(jobs_router, prefix="/api/v1")
+    test_app.include_router(deps_router, prefix="/api/v1")
     if job_store is not None:
         test_app.state.job_store = job_store
     if artifact_store is not None:
@@ -175,6 +180,7 @@ app = FastAPI(
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(jobs_router, prefix="/api/v1")
+app.include_router(deps_router, prefix="/api/v1")
 
 
 @app.get("/")
@@ -184,5 +190,28 @@ async def root() -> dict[str, str]:
         "version": settings.app_version,
         "health": "/api/v1/health",
         "docs": "/docs",
+        "ui": "/ui",
         "jobs": "/api/v1/repository/jobs",
     }
+
+
+# -----------------------------------------------------------------------
+# Phase 8B — Serve built frontend from /ui
+# Uses StaticFiles with html=True for SPA (client-side routing) support.
+# Mounted AFTER API routes so /api/* routes take priority.
+# -----------------------------------------------------------------------
+
+_FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+
+if _FRONTEND_DIST.is_dir():
+    app.mount(
+        "/ui",
+        StaticFiles(directory=str(_FRONTEND_DIST), html=True),
+        name="frontend",
+    )
+    logger.info("event=frontend_mounted path=%s", str(_FRONTEND_DIST))
+else:
+    logger.info(
+        "event=frontend_not_built path=%s — run: cd frontend && npm run build",
+        str(_FRONTEND_DIST),
+    )

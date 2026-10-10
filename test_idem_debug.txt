@@ -1,0 +1,92 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.8, pytest-8.4.2, pluggy-1.6.0 -- C:\Program Files\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: c:\sap-repository-intelligence
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-0.26.0, mock-3.16.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_idempotency_key_same_request FAILED
+
+================================== FAILURES ===================================
+_______ TestJobCreationAPI.test_post_jobs_idempotency_key_same_request ________
+
+self = <test_phase6.TestJobCreationAPI object at 0x000002620E098160>
+api_client_default = <starlette.testclient.TestClient object at 0x000002621052DBE0>
+
+    def test_post_jobs_idempotency_key_same_request(self, api_client_default):
+        payload = self._job_payload()
+        r1 = api_client_default.post(
+            "/api/v1/repository/jobs",
+            json=payload,
+            headers={"Idempotency-Key": "test-idem-001"},
+        )
+        r2 = api_client_default.post(
+            "/api/v1/repository/jobs",
+            json=payload,
+            headers={"Idempotency-Key": "test-idem-001"},
+        )
+>       assert r1.status_code == 202
+E       assert 422 == 202
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+tests\test_phase6.py:987: AssertionError
+----------------------------- Captured log setup ------------------------------
+WARNING  app.jobs.store:store.py:497 event=stale_job_recovered count=42
+WARNING  app.jobs.executor:executor.py:150 event=stale_job_recovered count=42 worker_id=056332fa
+WARNING  app.main:main.py:89 event=stale_jobs_recovered count=42
+WARNING  app.jobs.service:service.py:305 event=artifact_cleanup_error error='LocalArtifactStore' object has no attribute 'cleanup_expired'
+---------------------------- Captured log teardown ----------------------------
+ERROR    app.jobs.executor:executor.py:327 event=export_error job_id=acba03f5-e00b-4b05-aae0-0faa20cb218a
+Traceback (most recent call last):
+  File "c:\sap-repository-intelligence\app\jobs\executor.py", line 316, in _run_export_sync
+    artifact = self._artifacts.save(
+        job_id=job_id,
+    ...<4 lines>...
+        sha256=sha256,
+    )
+TypeError: LocalArtifactStore.save() got an unexpected keyword argument 'content'
+ERROR    app.jobs.executor:executor.py:453 event=job_error job_id=acba03f5-e00b-4b05-aae0-0faa20cb218a worker_id=056332fa-w1
+Traceback (most recent call last):
+  File "c:\sap-repository-intelligence\app\jobs\executor.py", line 445, in _execute_job
+    artifact = await asyncio.to_thread(
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+        self._run_export_sync, job_id, request, extraction_result, async_fmt_str
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Program Files\Python314\Lib\asyncio\threads.py", line 26, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Program Files\Python314\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "c:\sap-repository-intelligence\app\jobs\executor.py", line 316, in _run_export_sync
+    artifact = self._artifacts.save(
+        job_id=job_id,
+    ...<4 lines>...
+        sha256=sha256,
+    )
+TypeError: LocalArtifactStore.save() got an unexpected keyword argument 'content'
+============================== warnings summary ===============================
+tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_idempotency_key_same_request
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_idempotency_key_same_request
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_idempotency_key_same_request
+tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_idempotency_key_same_request
+  C:\Program Files\Python314\Lib\asyncio\events.py:94: RuntimeWarning: coroutine 'BulkExtractionService.extract' was never awaited
+    self._context.run(self._callback, *self._args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_idempotency_key_same_request
+======================== 1 failed, 4 warnings in 4.65s ========================

@@ -1,0 +1,183 @@
+...............F.F..FF.....................FF.FF.FF.....F......FF..FF.   [100%]
+================================== FAILURES ===================================
+___ TestBulkExtractionServiceUnit.test_one_object_failed_continue_on_error ____
+tests\test_phase5.py:416: in test_one_object_failed_continue_on_error
+    assert result.successful_object_count == 2
+E   AssertionError: assert 1 == 2
+E    +  where 1 = BulkExtractionResult(extraction_id='69f97fe5-1429-45db-af6c-a40859e0c7d8', schema_version='1.0', started_at=datetime.d...g source extraction: StopAsyncIteration', stage=<ExtractionStage.SOURCE: 'SOURCE'>)], duration_ms=0.1081999798770994)]).successful_object_count
+______ TestBulkExtractionServiceUnit.test_fail_fast_stop_on_first_error _______
+tests\test_phase5.py:463: in test_fail_fast_stop_on_first_error
+    assert result.failed_object_count >= 1
+E   AssertionError: assert 0 >= 1
+E    +  where 0 = BulkExtractionResult(extraction_id='283e9b6a-67c2-4aa0-b72a-70af157d91f0', schema_version='1.0', started_at=datetime.d... error during metadata extraction.', stage=<ExtractionStage.METADATA: 'METADATA'>)], duration_ms=0.14879999798722565)]).failed_object_count
+__________ TestBulkExtractionServiceUnit.test_search_based_selection __________
+tests\test_phase5.py:504: in test_search_based_selection
+    RepositoryObject(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for RepositoryObject
+E   friendly_type
+E     Field required [type=missing, input_value={'sap_object_type': 'PROG...description': 'Program'}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+___________ TestBulkExtractionServiceUnit.test_search_zero_results ____________
+tests\test_phase5.py:547: in test_search_zero_results
+    return_value=RepositorySearchResponse(
+E   pydantic_core._pydantic_core.ValidationError: 2 validation errors for RepositorySearchResponse
+E   criteria
+E     Field required [type=missing, input_value={'objects': [], 'truncated': False}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+E   statistics
+E     Field required [type=missing, input_value={'objects': [], 'truncated': False}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+_________________ TestZipExport.test_clas_multiple_components _________________
+tests\test_phase5.py:806: in test_clas_multiple_components
+    comp1 = RepositorySourceComponent(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for RepositorySourceComponent
+E   line_count
+E     Field required [type=missing, input_value={'component_type': 'CLASS...L_SAMPLE DEFINITION.')]}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+_________________ TestZipExport.test_tabl_uses_txt_extension __________________
+tests\test_phase5.py:838: in test_tabl_uses_txt_extension
+    comp = RepositorySourceComponent(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for RepositorySourceComponent
+E   line_count
+E     Field required [type=missing, input_value={'component_type': 'DDIC_...ne='TABLE DEFINITION')]}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+____________ TestZipSecurity.test_malicious_object_name_traversal _____________
+tests\test_phase5.py:898: in test_malicious_object_name_traversal
+    self._check_no_traversal(names)
+tests\test_phase5.py:879: in _check_no_traversal
+    assert ".." not in name, f"Path traversal in ZIP entry: {name}"
+E   AssertionError: Path traversal in ZIP entry: ncoreiq-export/objects/PROG/_.._etc_passwd/metadata.json
+E   assert '..' not in 'ncoreiq-exp...etadata.json'
+E     
+E     '..' is contained here:
+E       ncoreiq-export/objects/PROG/_.._etc_passwd/metadata.json
+E     ?                              ++
+________ TestZipSecurity.test_malicious_object_name_windows_traversal _________
+tests\test_phase5.py:907: in test_malicious_object_name_windows_traversal
+    self._check_no_traversal(names)
+tests\test_phase5.py:879: in _check_no_traversal
+    assert ".." not in name, f"Path traversal in ZIP entry: {name}"
+E   AssertionError: Path traversal in ZIP entry: ncoreiq-export/objects/PROG/_.._windows_system32/metadata.json
+E   assert '..' not in 'ncoreiq-exp...etadata.json'
+E     
+E     '..' is contained here:
+E       ncoreiq-export/objects/PROG/_.._windows_system32/metadata.json
+E     ?                              ++
+____________ TestZipSecurity.test_malicious_object_type_traversal _____________
+tests\test_phase5.py:925: in test_malicious_object_type_traversal
+    self._check_no_traversal(names)
+tests\test_phase5.py:879: in _check_no_traversal
+    assert ".." not in name, f"Path traversal in ZIP entry: {name}"
+E   AssertionError: Path traversal in ZIP entry: ncoreiq-export/objects/_.._bin/ZPROG1/metadata.json
+E   assert '..' not in 'ncoreiq-exp...etadata.json'
+E     
+E     '..' is contained here:
+E       ncoreiq-export/objects/_.._bin/ZPROG1/metadata.json
+E     ?                         ++
+___________ TestZipSecurity.test_malicious_component_name_traversal ___________
+tests\test_phase5.py:929: in test_malicious_component_name_traversal
+    comp = RepositorySourceComponent(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for RepositorySourceComponent
+E   line_count
+E     Field required [type=missing, input_value={'component_type': 'PROGR...1, source_line='evil')]}, input_type=dict]
+E       For further information visit https://errors.pydantic.dev/2.13/v/missing
+_____________ TestLargeRequestLimits.test_hard_ceiling_respected ______________
+tests\test_phase5.py:1028: in test_hard_ceiling_respected
+    settings = _make_settings(max_objects=BULK_MAX_OBJECTS_HARD_CEILING + 100)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_phase5.py:56: in _make_settings
+    return Settings(
+C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pydantic_settings\main.py:262: in __init__
+    super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E   ncoreiq_bulk_max_objects
+E     Input should be less than or equal to 1000 [type=less_than_equal, input_value=1100, input_type=int]
+E       For further information visit https://errors.pydantic.dev/2.13/v/less_than_equal
+_________________ TestExportEndpoint.test_export_json_format __________________
+tests\test_phase5.py:1176: in test_export_json_format
+    assert resp.status_code == 200
+E   assert 422 == 200
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+__________________ TestExportEndpoint.test_export_zip_format __________________
+tests\test_phase5.py:1198: in test_export_zip_format
+    assert resp.status_code == 200
+E   assert 422 == 200
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+_____________ TestExportEndpoint.test_export_does_not_re_extract ______________
+tests\test_phase5.py:1239: in test_export_does_not_re_extract
+    assert mock_bulk.extract.call_count == 1
+E   AssertionError: assert 0 == 1
+E    +  where 0 = <AsyncMock name='mock.extract' id='2294747520640'>.call_count
+E    +    where <AsyncMock name='mock.extract' id='2294747520640'> = <MagicMock id='2294747515936'>.extract
+___________ TestExportEndpoint.test_export_zero_search_results_200 ____________
+tests\test_phase5.py:1262: in test_export_zero_search_results_200
+    assert resp.status_code == 200
+E   assert 422 == 200
+E    +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+============================== warnings summary ===============================
+..\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_explicit_objects_valid
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:874: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:772: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    old_loop_policy = asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:777: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(policy)
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1183: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:889: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:794: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(old_loop_policy)
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:942: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:966: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:978: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 17 warnings
+  C:\Program Files\Python314\Lib\zipfile\__init__.py:1755: UserWarning: Duplicate name: 'ncoreiq-export/manifest.json'
+    return self._open_to_write(zinfo, force_zip64=force_zip64)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_phase5.py::TestBulkExtractionServiceUnit::test_one_object_failed_continue_on_error
+FAILED tests/test_phase5.py::TestBulkExtractionServiceUnit::test_fail_fast_stop_on_first_error
+FAILED tests/test_phase5.py::TestBulkExtractionServiceUnit::test_search_based_selection
+FAILED tests/test_phase5.py::TestBulkExtractionServiceUnit::test_search_zero_results
+FAILED tests/test_phase5.py::TestZipExport::test_clas_multiple_components - p...
+FAILED tests/test_phase5.py::TestZipExport::test_tabl_uses_txt_extension - py...
+FAILED tests/test_phase5.py::TestZipSecurity::test_malicious_object_name_traversal
+FAILED tests/test_phase5.py::TestZipSecurity::test_malicious_object_name_windows_traversal
+FAILED tests/test_phase5.py::TestZipSecurity::test_malicious_object_type_traversal
+FAILED tests/test_phase5.py::TestZipSecurity::test_malicious_component_name_traversal
+FAILED tests/test_phase5.py::TestLargeRequestLimits::test_hard_ceiling_respected
+FAILED tests/test_phase5.py::TestExportEndpoint::test_export_json_format - as...
+FAILED tests/test_phase5.py::TestExportEndpoint::test_export_zip_format - ass...
+FAILED tests/test_phase5.py::TestExportEndpoint::test_export_does_not_re_extract
+FAILED tests/test_phase5.py::TestExportEndpoint::test_export_zero_search_results_200
+15 failed, 55 passed, 190 warnings in 2.38s

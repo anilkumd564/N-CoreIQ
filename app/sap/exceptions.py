@@ -186,3 +186,61 @@ class RepositorySourceDataIntegrityError(SAPError):
             f"Source data integrity error: conflicting source lines for "
             f"component {component_type}/{component_name} at line {line_no}."
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 — Dependency & Relationship Intelligence exceptions
+# ---------------------------------------------------------------------------
+
+
+class DependencyObjectNotFoundError(SAPError):
+    """Raised when the source object for a dependency query does not exist.
+
+    Maps to HTTP 404.
+    """
+
+    def __init__(self, object_type: str, object_name: str) -> None:
+        self.object_type = object_type
+        self.object_name = object_name
+        super().__init__(
+            f"Dependency source object {object_type}/{object_name} was not found."
+        )
+
+
+class DependencyScopeTooLargeError(SAPError, ValueError):
+    """Raised when a reverse dependency or impact scope exceeds allowed limits.
+
+    Maps to HTTP 422.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class DependencyTraversalLimitError(SAPError):
+    """Raised when a traversal exceeds configured hard limits (depth/nodes/edges).
+
+    Maps to HTTP 422.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class DependencyDataIntegrityError(SAPError):
+    """Raised when DependencyRelationsSet returns data that cannot be parsed
+    or fails integrity checks.
+
+    Maps to HTTP 503.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class DependencyProviderError(SAPCommunicationError):
+    """Raised when the SAP provider returns an unexpected error specifically
+    during a DependencyRelationsSet call.
+
+    Subclasses SAPCommunicationError; maps to HTTP 503.
+    """

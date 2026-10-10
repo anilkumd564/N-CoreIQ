@@ -1,0 +1,51 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.8, pytest-8.4.2, pluggy-1.6.0 -- C:\Program Files\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: c:\sap-repository-intelligence
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/test_phase5.py::TestExportEndpoint::test_export_json_format FAILED
+
+================================== FAILURES ===================================
+_________________ TestExportEndpoint.test_export_json_format __________________
+
+self = <test_phase5.TestExportEndpoint object at 0x00000193A3CCB250>
+
+    def test_export_json_format(self):
+        from app.api.routes import get_bulk_extraction_service, get_export_service
+    
+        result = _make_result([_make_extracted_obj()])
+        mock_bulk, mock_export = self._mock_services(result)
+    
+        app.dependency_overrides[get_bulk_extraction_service] = lambda: mock_bulk
+        app.dependency_overrides[get_export_service] = lambda: mock_export
+        try:
+            resp = client.post(
+                "/api/v1/repository/export",
+                json={
+                    "format": "json",
+                    "objects": [{"object_type": "PROG", "object_name": "ZPROG1"}],
+                },
+            )
+>           assert resp.status_code == 200
+E           assert 422 == 200
+E            +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+tests\test_phase5.py:1176: AssertionError
+============================== warnings summary ===============================
+..\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_phase5.py::TestExportEndpoint::test_export_json_format
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_phase5.py::TestExportEndpoint::test_export_json_format - as...
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+======================== 1 failed, 2 warnings in 1.78s ========================

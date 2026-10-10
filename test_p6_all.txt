@@ -1,0 +1,26 @@
+........................................................................ [ 60%]
+.............F.F...........F..FF...F............                         [100%]
+============================== warnings summary ===============================
+tests/test_phase6.py::TestJobCreation::test_create_job_returns_queued
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_returns_202
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_phase6.py::TestListJobsAPI::test_list_jobs_respects_limit
+  C:\Program Files\Python314\Lib\asyncio\events.py:94: RuntimeWarning: coroutine 'BulkExtractionService.extract' was never awaited
+    self._context.run(self._callback, *self._args)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_empty_objects_returns_422
+FAILED tests/test_phase6.py::TestJobCreationAPI::test_post_jobs_idempotency_key_different_request_returns_409
+FAILED tests/test_phase6.py::TestCancelAPI::test_cancel_queued_job_status_is_cancelled
+FAILED tests/test_phase6.py::TestRetryAPI::test_retry_cancelled_job_returns_202
+FAILED tests/test_phase6.py::TestRetryAPI::test_retry_returns_new_job_id - Ke...
+FAILED tests/test_phase6.py::TestResultAPI::test_result_on_queued_job_returns_409
+6 failed, 114 passed, 3 warnings in 31.60s

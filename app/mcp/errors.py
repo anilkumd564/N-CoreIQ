@@ -64,8 +64,47 @@ def map_exception(exc: Exception, operation: str = "operation") -> MCPToolError:
         str(exc),
     )
 
+    # Import Phase 8 exceptions lazily
+    from app.sap.exceptions import (
+        DependencyDataIntegrityError,
+        DependencyObjectNotFoundError,
+        DependencyProviderError,
+        DependencyScopeTooLargeError,
+        DependencyTraversalLimitError,
+    )
+
     if isinstance(exc, MCPToolError):
         return exc
+
+    if isinstance(exc, DependencyObjectNotFoundError):
+        return MCPToolError(
+            "DEPENDENCY_OBJECT_NOT_FOUND",
+            f"Dependency source object not found: {exc.object_type}/{exc.object_name}",
+        )
+
+    if isinstance(exc, DependencyScopeTooLargeError):
+        return MCPToolError(
+            "DEPENDENCY_SCOPE_TOO_LARGE",
+            f"Dependency scope exceeds limits: {str(exc)[:200]}",
+        )
+
+    if isinstance(exc, DependencyTraversalLimitError):
+        return MCPToolError(
+            "DEPENDENCY_TRAVERSAL_LIMIT",
+            f"Dependency traversal limit exceeded: {str(exc)[:200]}",
+        )
+
+    if isinstance(exc, DependencyDataIntegrityError):
+        return MCPToolError(
+            "DEPENDENCY_DATA_ERROR",
+            "SAP dependency data integrity error. Check SAP Gateway logs.",
+        )
+
+    if isinstance(exc, DependencyProviderError):
+        return MCPToolError(
+            "SAP_UNAVAILABLE",
+            "SAP dependency service error. The operation may be retried.",
+        )
 
     if isinstance(exc, RepositoryObjectNotFoundError):
         return MCPToolError(

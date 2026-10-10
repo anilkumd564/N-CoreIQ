@@ -43,10 +43,18 @@ from app.models.phase4 import (
     RepositorySourceComponent,
     RepositorySourceLine,
 )
+from app.models.phase8 import (
+    DependencyConfidence,
+    DependencyRelationshipType,
+    DirectDependencyResult,
+    RepositoryDependency,
+)
 from app.models.repository import PackageResolutionResult, RepositoryPackage
 from app.models.results import ConnectionTestResult
 from app.sap.connection.base import ODataDiscoveryResult, SapConnectionProvider
 from app.sap.exceptions import (
+    DependencyDataIntegrityError,
+    DependencyProviderError,
     RepositoryObjectNotFoundError,
     RepositoryPackageNotFoundError,
     RepositorySourceDataIntegrityError,
@@ -1307,6 +1315,301 @@ class ODataSAPConnectionProvider(SapConnectionProvider):
                 "component_count": result.component_count,
                 "truncated": result.truncated,
                 "found": result.found,
+                "system_id": result.system_id,
+                "client": result.client,
+                "duration_seconds": round(elapsed, 3),
+            },
+        )
+        return result
+
+
+    # ------------------------------------------------------------------
+    # Response parsing — DependencyRelationsSet (Phase 8)
+    # ------------------------------------------------------------------
+
+    def _parse_dependencies(
+        self,
+        payload: Any,
+        object_type: str,
+        object_name: str,
+    ) -> DirectDependencyResult:
+        """Parse a DependencyRelationsSet OData V2 JSON response.
+
+        Empty results are valid (object may have zero detected dependencies).
+
+        Raises:
+            DependencyDataIntegrityError: if the OData envelope is malformed.
+        """
+        if not isinstance(payload, dict) or "d" not in payload:
+            raise DependencyDataIntegrityError(
+                "SAP OData DependencyRelationsSet response is missing the expected 'd' envelope."
+            )
+        d = payload["d"]
+        if not isinstance(d, dict) or "results" not in d:
+            raise DependencyDataIntegrityError(
+                "SAP OData DependencyRelationsSet 'd' object is missing the 'results' list."
+            )
+        results = d["results"]
+        if not isinstance(results, list):
+            raise DependencyDataIntegrityError(
+                "SAP OData DependencyRelationsSet 'results' is not a list."
+            )
+
+        # Empty result = valid (zero dependencies).
+        if len(results) == 0:
+            return DirectDependencyResult(
+                source_object_type=object_type,
+                source_object_name=object_name,
+                total_relations=0,
+                returned_relations=0,
+                truncated=False,
+            )
+
+        # Extract envelope metadata from first row.
+        first_row = results[0]
+        if not isinstance(first_row, dict):
+            raise DependencyDataIntegrityError(
+                "SAP OData DependencyRelationsSet result row[0] is not a dict."
+            )
+
+        system_id = str(first_row.get("SystemId") or "").strip() or None
+        client = str(first_row.get("Client") or "").strip() or None
+        message = str(first_row.get("Message") or "").strip() or None
+        truncated = False
+
+        total_relations = 0
+        raw_total = first_row.get("TotalRelations")
+        if raw_total is not None and str(raw_total).strip():
+            try:
+                total_relations = int(raw_total)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "sap_odata_dep_invalid_total_relations",
+                    extra={"operation": "dependency_retrieval", "value": repr(raw_total)},
+                )
+
+        relationships: list[RepositoryDependency] = []
+
+        for idx, raw_row in enumerate(results):
+            if not isinstance(raw_row, dict):
+                raise DependencyDataIntegrityError(
+                    f"SAP OData DependencyRelationsSet result row[{idx}] is not a dict."
+                )
+
+            # Update truncated from any row.
+            if self._coerce_bool(raw_row.get("Truncated", False)):
+                truncated = True
+
+            # Update message from first non-blank row.
+            row_msg = str(raw_row.get("Message") or "").strip()
+            if row_msg and not message:
+                message = row_msg
+
+            # Parse target fields — required.
+            target_type = str(raw_row.get("TargetObjectType") or "").strip()
+            target_name = str(raw_row.get("TargetObjectName") or "").strip()
+            if not target_type or not target_name:
+                logger.warning(
+                    "sap_odata_dep_blank_target_row",
+                    extra={
+                        "operation": "dependency_retrieval",
+                        "row_index": idx,
+                        "source": f"{object_type}/{object_name}",
+                    },
+                )
+                continue
+
+            # Parse relationship type — must be a canonical value.
+            raw_rel_type = str(raw_row.get("RelationshipType") or "").strip().upper()
+            try:
+                relationship_type = DependencyRelationshipType(raw_rel_type)
+            except ValueError:
+                logger.warning(
+                    "sap_odata_dep_unknown_relationship_type",
+                    extra={
+                        "operation": "dependency_retrieval",
+                        "relationship_type": raw_rel_type,
+                        "row_index": idx,
+                    },
+                )
+                continue
+
+            # Parse confidence — default to MEDIUM if unknown.
+            raw_conf = str(raw_row.get("Confidence") or "").strip().upper()
+            try:
+                confidence = DependencyConfidence(raw_conf) if raw_conf else DependencyConfidence.MEDIUM
+            except ValueError:
+                logger.warning(
+                    "sap_odata_dep_unknown_confidence",
+                    extra={
+                        "operation": "dependency_retrieval",
+                        "confidence": raw_conf,
+                        "row_index": idx,
+                    },
+                )
+                confidence = DependencyConfidence.MEDIUM
+
+            # Parse optional integer fields safely.
+            def _safe_int(raw: Any) -> int | None:
+                if raw is None or str(raw).strip() == "":
+                    return None
+                try:
+                    return int(raw)
+                except (TypeError, ValueError):
+                    return None
+
+            row_system_id = str(raw_row.get("SystemId") or "").strip() or system_id
+            row_client = str(raw_row.get("Client") or "").strip() or client
+
+            relationship = RepositoryDependency(
+                relation_id=_safe_int(raw_row.get("RelationId")),
+                system_id=row_system_id,
+                client=row_client,
+                source_object_type=str(raw_row.get("SourceObjectType") or object_type).strip(),
+                source_object_name=str(raw_row.get("SourceObjectName") or object_name).strip(),
+                target_object_type=target_type,
+                target_object_name=target_name,
+                relationship_type=relationship_type,
+                evidence_source=str(raw_row.get("EvidenceSource") or "").strip() or None,
+                confidence=confidence,
+                source_component=str(raw_row.get("SourceComponent") or "").strip() or None,
+                line_no=_safe_int(raw_row.get("LineNo")),
+                dynamic=self._coerce_bool(raw_row.get("DynamicFlag", False)),
+                detail=str(raw_row.get("Detail") or "").strip() or None,
+            )
+            relationships.append(relationship)
+
+        returned_relations = len(relationships)
+        # Use ECC total_relations if available; otherwise use returned count.
+        if total_relations == 0:
+            total_relations = returned_relations
+
+        return DirectDependencyResult(
+            system_id=system_id,
+            client=client,
+            source_object_type=object_type,
+            source_object_name=object_name,
+            total_relations=total_relations,
+            returned_relations=returned_relations,
+            truncated=truncated,
+            message=message,
+            relationships=relationships,
+        )
+
+    # ------------------------------------------------------------------
+    # Dependency retrieval (Phase 8)
+    # ------------------------------------------------------------------
+
+    async def get_object_dependencies(
+        self,
+        object_type: str,
+        object_name: str,
+        max_results: int = 1000,
+    ) -> DirectDependencyResult:
+        """Retrieve direct dependencies via DependencyRelationsSet (OData V2)."""
+        self._require_configuration()
+        odata = self.settings.sap_odata
+
+        escaped_type = self._escape_odata_string(object_type)
+        escaped_name = self._escape_odata_string(object_name)
+        odata_filter = (
+            f"SourceObjectType eq '{escaped_type}' "
+            f"and SourceObjectName eq '{escaped_name}' "
+            f"and MaxResults eq {max_results}"
+        )
+
+        url = f"{self._service_root()}/DependencyRelationsSet"
+        params = {
+            "sap-client": odata.client,
+            "$filter": odata_filter,
+            "$format": "json",
+        }
+
+        start_time = time.monotonic()
+        logger.info(
+            "sap_odata_dependencies_start",
+            extra={
+                "operation": "dependency_retrieval",
+                "object_type": object_type,
+                "object_name": object_name,
+                "max_results": max_results,
+                "entity_set": "DependencyRelationsSet",
+            },
+        )
+
+        try:
+            async with self._build_client() as http_client:
+                response = await http_client.get(url, params=params)
+        except httpx.RequestError as exc:
+            raise self._map_http_exception(exc) from exc
+
+        status_code = response.status_code
+        if status_code == 401:
+            raise SAPAuthenticationError(
+                "SAP authentication failed during dependency retrieval. "
+                "Check SAP_ODATA__USER and SAP_ODATA__PASSWORD."
+            )
+        if status_code == 403:
+            raise SAPAuthenticationError(
+                "SAP user lacks permission to access DependencyRelationsSet. "
+                f"Assign the required OData authorisation in SAP ({odata.service})."
+            )
+        if status_code == 404:
+            raise SAPGatewayError(
+                "SAP OData entity set 'DependencyRelationsSet' was not found (HTTP 404). "
+                f"Verify the service '{odata.service}' is activated in /IWFND/MAINT_SERVICE."
+            )
+        if status_code >= 500:
+            # SAP DependencyRelationsSet may return HTTP 500 for objects that do
+            # not have entries in the dependency tables (e.g. object does not exist,
+            # or the ABAP function raises a not-found exception that the OData layer
+            # translates to 500 instead of 404).  Return an empty result with a
+            # warning rather than hard-failing the entire operation.
+            logger.warning(
+                "sap_odata_dependencies_server_error",
+                extra={
+                    "operation": "dependency_retrieval",
+                    "object_type": object_type,
+                    "object_name": object_name,
+                    "status_code": status_code,
+                },
+            )
+            return DirectDependencyResult(
+                source_object_type=object_type,
+                source_object_name=object_name,
+                total_relations=0,
+                returned_relations=0,
+                truncated=False,
+                message=(
+                    f"SAP dependency service returned HTTP {status_code} for "
+                    f"{object_type}/{object_name}. "
+                    "The object may not exist or may not have dependency data recorded."
+                ),
+            )
+        if status_code != 200:
+            raise SAPCommunicationError(
+                f"SAP OData DependencyRelationsSet returned unexpected HTTP status {status_code}."
+            )
+
+        try:
+            payload = response.json()
+        except Exception as exc:  # noqa: BLE001
+            raise DependencyDataIntegrityError(
+                "SAP OData DependencyRelationsSet response body is not valid JSON."
+            ) from exc
+
+        result = self._parse_dependencies(payload, object_type, object_name)
+
+        elapsed = time.monotonic() - start_time
+        logger.info(
+            "sap_odata_dependencies_complete",
+            extra={
+                "operation": "dependency_retrieval",
+                "object_type": object_type,
+                "object_name": object_name,
+                "returned_relations": result.returned_relations,
+                "total_relations": result.total_relations,
+                "truncated": result.truncated,
                 "system_id": result.system_id,
                 "client": result.client,
                 "duration_seconds": round(elapsed, 3),

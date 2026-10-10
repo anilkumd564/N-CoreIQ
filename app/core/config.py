@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "SAP Repository Intelligence Layer"
-    app_version: str = "0.7.0"
+    app_version: str = "0.8.0"
     app_env: Literal["local", "btp", "test"] = "local"
     log_level: str = "INFO"
 
@@ -214,6 +214,20 @@ class Settings(BaseSettings):
 
     #: Tool-level timeout in seconds (advisory — individual tools may enforce shorter).
     ncoreiq_mcp_tool_timeout_seconds: int = Field(default=120, ge=10)
+
+    # ------------------------------------------------------------------
+    # Phase 8 — Dependency Intelligence settings
+    # ------------------------------------------------------------------
+    #: Default max_results for MCP get_dependencies tool.
+    ncoreiq_mcp_max_dep_results: int = Field(default=200, ge=1, le=1000)
+
+    #: MCP traversal hard limits (tighter than REST).
+    ncoreiq_mcp_dep_max_depth: int = Field(default=3, ge=1, le=3)
+    ncoreiq_mcp_dep_max_nodes: int = Field(default=200, ge=1, le=200)
+    ncoreiq_mcp_dep_max_edges: int = Field(default=500, ge=1, le=500)
+
+    #: MCP reverse lookup candidate limit.
+    ncoreiq_mcp_dep_max_candidates: int = Field(default=50, ge=1, le=50)
 
     def model_dump(self, *args, **kwargs):  # type: ignore[override]
         """Serialize settings with the SAP passwords always redacted.

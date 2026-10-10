@@ -1,0 +1,178 @@
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 46%]
+........................................................................ [ 55%]
+........................................................................ [ 64%]
+........................................................................ [ 73%]
+...........................................................FF........... [ 82%]
+........................................................................ [ 92%]
+..............................................................           [100%]
+================================== FAILURES ===================================
+__ TestArchitectureBoundary.test_dep_module_does_not_import_source_lines_set __
+tests\test_phase8_api.py:414: in test_dep_module_does_not_import_source_lines_set
+    assert "SourceLinesSet" not in source
+E   assert 'SourceLinesSet' not in '"""Phase 8 ...n        )\n'
+E     
+E     'SourceLinesSet' is contained here:
+E       r.
+E         * No SourceLinesSet calls — ECC owns dependency extraction.
+E     ?        ++++++++++++++
+E         * No metadata N+1 — do not enrich nodes with ObjectMetadataSet.
+E         * No graph database — in-memory request-local structures only....
+E     
+E     ...Full output truncated (881 lines hidden), use '-vv' to show
+_ TestArchitectureBoundary.test_dep_module_does_not_import_object_metadata_set _
+tests\test_phase8_api.py:421: in test_dep_module_does_not_import_object_metadata_set
+    assert "ObjectMetadataSet" not in source
+E   assert 'ObjectMetadataSet' not in '"""Phase 8 ...n        )\n'
+E     
+E     'ObjectMetadataSet' is contained here:
+E       odes with ObjectMetadataSet.
+E         * No graph database — in-memory request-local structures only.
+E         * No AI/LLM — all analysis is deterministic.
+E         * Read-only — no SAP write operations.
+E       """...
+E     
+E     ...Full output truncated (878 lines hidden), use '-vv' to show
+============================== warnings summary ===============================
+..\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_foundation.py::test_health_endpoint_returns_200
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:874: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:772: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    old_loop_policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:777: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1183: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:889: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:794: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(old_loop_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:942: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:966: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_phase8_mcp.py: 29 warnings
+tests/test_phase8_provider.py: 8 warnings
+tests/test_phase8_service.py: 38 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:978: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_phase8_api.py::TestArchitectureBoundary::test_dep_module_does_not_import_source_lines_set
+FAILED tests/test_phase8_api.py::TestArchitectureBoundary::test_dep_module_does_not_import_object_metadata_set
+2 failed, 780 passed, 2756 warnings in 56.25s

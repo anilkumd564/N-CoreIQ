@@ -1,0 +1,19 @@
+sap_ca.pem found: 1670 bytes
+sap_ca.pem cert count: 1
+
+--- Connecting with verify=NONE to inspect chain ---
+Leaf cert DER size: 1171 bytes
+Subject: None
+Issuer: None
+notAfter: None
+SANs: None
+sap_leaf.pem written (leaf only)
+
+--- Testing verify with sap_ca.pem ---
+VERIFY WITH CA_FILE: FAIL - SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)
+
+--- Testing verify with leaf cert (sap_leaf.pem) ---
+VERIFY WITH LEAF: FAIL - SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)
+
+--- Testing verify with system trust store ---
+VERIFY WITH SYSTEM STORE: FAIL - SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1032)

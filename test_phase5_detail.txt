@@ -1,0 +1,127 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.8, pytest-8.4.2, pluggy-1.6.0 -- C:\Program Files\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: c:\sap-repository-intelligence
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 70 items
+
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_explicit_objects_valid PASSED [  1%]
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_search_valid PASSED [  2%]
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_both_supplied_raises PASSED [  4%]
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_neither_supplied_raises PASSED [  5%]
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_include_metadata_false_and_source_false_raises PASSED [  7%]
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_duplicate_objects_are_deduplicated PASSED [  8%]
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_defaults PASSED [ 10%]
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_source_max_lines_zero_invalid PASSED [ 11%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_single_object_success PASSED [ 12%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_multiple_objects_success PASSED [ 14%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_metadata_only PASSED [ 15%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_source_only PASSED [ 17%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_deduplication PASSED [ 18%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_normalization PASSED [ 20%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_deterministic_ordering PASSED [ 21%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_one_object_failed_continue_on_error PASSED [ 22%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_partial_object_metadata_ok_source_fail PASSED [ 24%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_fail_fast_stop_on_first_error PASSED [ 25%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_bulk_limit_enforced PASSED [ 27%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_source_truncation_tracked PASSED [ 28%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_search_based_selection PASSED [ 30%]
+tests/test_phase5.py::TestBulkExtractionServiceUnit::test_search_zero_results PASSED [ 31%]
+tests/test_phase5.py::TestBulkConcurrency::test_concurrency_bounded PASSED [ 32%]
+tests/test_phase5.py::TestJsonExport::test_valid_utf8_json PASSED        [ 34%]
+tests/test_phase5.py::TestJsonExport::test_schema_version_present PASSED [ 35%]
+tests/test_phase5.py::TestJsonExport::test_extraction_id_present PASSED  [ 37%]
+tests/test_phase5.py::TestJsonExport::test_statistics_present PASSED     [ 38%]
+tests/test_phase5.py::TestJsonExport::test_objects_serialized PASSED     [ 40%]
+tests/test_phase5.py::TestJsonExport::test_metadata_serialized PASSED    [ 41%]
+tests/test_phase5.py::TestJsonExport::test_source_serialized PASSED      [ 42%]
+tests/test_phase5.py::TestJsonExport::test_unicode_preserved PASSED      [ 44%]
+tests/test_phase5.py::TestJsonExport::test_blank_source_lines_preserved PASSED [ 45%]
+tests/test_phase5.py::TestJsonExport::test_no_credentials_in_output PASSED [ 47%]
+tests/test_phase5.py::TestJsonExport::test_truncated_object_in_json PASSED [ 48%]
+tests/test_phase5.py::TestJsonExport::test_objects_sorted_deterministically PASSED [ 50%]
+tests/test_phase5.py::TestZipExport::test_valid_zip PASSED               [ 51%]
+tests/test_phase5.py::TestZipExport::test_manifest_present PASSED        [ 52%]
+tests/test_phase5.py::TestZipExport::test_manifest_fields PASSED         [ 54%]
+tests/test_phase5.py::TestZipExport::test_metadata_json_present PASSED   [ 55%]
+tests/test_phase5.py::TestZipExport::test_source_json_present PASSED     [ 57%]
+tests/test_phase5.py::TestZipExport::test_source_component_file_present PASSED [ 58%]
+tests/test_phase5.py::TestZipExport::test_unicode_in_zip PASSED          [ 60%]
+tests/test_phase5.py::TestZipExport::test_objects_directory_structure PASSED [ 61%]
+tests/test_phase5.py::TestZipExport::test_clas_multiple_components PASSED [ 62%]
+tests/test_phase5.py::TestZipExport::test_tabl_uses_txt_extension PASSED [ 64%]
+tests/test_phase5.py::TestZipSecurity::test_normal_object_no_traversal PASSED [ 65%]
+tests/test_phase5.py::TestZipSecurity::test_malicious_object_name_traversal PASSED [ 67%]
+tests/test_phase5.py::TestZipSecurity::test_malicious_object_name_windows_traversal PASSED [ 68%]
+tests/test_phase5.py::TestZipSecurity::test_malicious_object_name_absolute_path PASSED [ 70%]
+tests/test_phase5.py::TestZipSecurity::test_malicious_object_type_traversal PASSED [ 71%]
+tests/test_phase5.py::TestZipSecurity::test_malicious_component_name_traversal PASSED [ 72%]
+tests/test_phase5.py::TestZipSecurity::test_object_name_with_slashes PASSED [ 74%]
+tests/test_phase5.py::TestZipSecurity::test_drive_letter_in_name PASSED  [ 75%]
+tests/test_phase5.py::TestZipSecurity::test_no_credentials_in_zip PASSED [ 77%]
+tests/test_phase5.py::TestLargeRequestLimits::test_at_configured_maximum PASSED [ 78%]
+tests/test_phase5.py::TestLargeRequestLimits::test_above_configured_maximum_raises PASSED [ 80%]
+tests/test_phase5.py::TestLargeRequestLimits::test_hard_ceiling_respected PASSED [ 81%]
+tests/test_phase5.py::TestExtractEndpoint::test_extract_explicit_objects_ok PASSED [ 82%]
+tests/test_phase5.py::TestExtractEndpoint::test_extract_neither_selection_422 PASSED [ 84%]
+tests/test_phase5.py::TestExtractEndpoint::test_extract_both_selections_422 PASSED [ 85%]
+tests/test_phase5.py::TestExtractEndpoint::test_extract_include_both_false_422 PASSED [ 87%]
+tests/test_phase5.py::TestExtractEndpoint::test_extract_sap_failure_503 PASSED [ 88%]
+tests/test_phase5.py::TestExtractEndpoint::test_extract_partial_result_200 PASSED [ 90%]
+tests/test_phase5.py::TestExportEndpoint::test_export_json_format PASSED [ 91%]
+tests/test_phase5.py::TestExportEndpoint::test_export_zip_format PASSED  [ 92%]
+tests/test_phase5.py::TestExportEndpoint::test_export_invalid_format_422 PASSED [ 94%]
+tests/test_phase5.py::TestExportEndpoint::test_export_neither_selection_422 PASSED [ 95%]
+tests/test_phase5.py::TestExportEndpoint::test_export_does_not_re_extract PASSED [ 97%]
+tests/test_phase5.py::TestExportEndpoint::test_export_zero_search_results_200 PASSED [ 98%]
+tests/test_phase5.py::TestExportArchitecture::test_export_uses_extraction_result_not_sap PASSED [100%]
+
+============================== warnings summary ===============================
+..\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_phase5.py::TestBulkExtractionRequestValidation::test_explicit_objects_valid
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:874: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:772: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    old_loop_policy = asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:777: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(policy)
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1183: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:889: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:794: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(old_loop_policy)
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:942: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:966: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_phase5.py: 19 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:978: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+====================== 70 passed, 173 warnings in 1.94s =======================

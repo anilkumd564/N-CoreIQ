@@ -1,0 +1,488 @@
+Python 3.14.8
+============================= test session starts =============================
+platform win32 -- Python 3.14.8, pytest-8.4.2, pluggy-1.6.0 -- C:\Program Files\Python314\python.exe
+cachedir: .pytest_cache
+rootdir: c:\sap-repository-intelligence
+configfile: pytest.ini
+plugins: anyio-4.14.2, asyncio-0.26.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 363 items
+
+tests/test_foundation.py::test_health_endpoint_returns_200 PASSED        [  0%]
+tests/test_foundation.py::test_health_response_contains_expected_fields PASSED [  0%]
+tests/test_foundation.py::test_application_loads_in_local_mode PASSED    [  0%]
+tests/test_foundation.py::test_repository_search_request_accepts_valid_input PASSED [  1%]
+tests/test_foundation.py::test_repository_search_request_rejects_invalid_input PASSED [  1%]
+tests/test_foundation.py::test_configuration_serialization_does_not_expose_secrets PASSED [  1%]
+tests/test_foundation.py::test_application_startup_does_not_require_ecc_system PASSED [  1%]
+tests/test_foundation.py::test_unimplemented_sap_capability_fails_gracefully PASSED [  2%]
+tests/test_foundation.py::test_sap_ping_does_not_crash_and_hides_credentials PASSED [  2%]
+tests/test_health.py::test_health_endpoint FAILED                        [  2%]
+tests/test_odata_connectivity.py::test_odata_ping_success_returns_connected PASSED [  3%]
+tests/test_odata_connectivity.py::test_odata_ping_result_is_connection_test_result_instance PASSED [  3%]
+tests/test_odata_connectivity.py::test_odata_ping_non_success_status_raises_function_execution_error PASSED [  3%]
+tests/test_odata_connectivity.py::test_odata_ping_empty_status_raises_function_execution_error PASSED [  3%]
+tests/test_odata_connectivity.py::test_odata_ping_missing_d_raises_parse_error PASSED [  4%]
+tests/test_odata_connectivity.py::test_odata_ping_missing_results_raises_parse_error PASSED [  4%]
+tests/test_odata_connectivity.py::test_odata_ping_empty_results_raises_parse_error PASSED [  4%]
+tests/test_odata_connectivity.py::test_odata_ping_malformed_json_raises_parse_error PASSED [  4%]
+tests/test_odata_connectivity.py::test_odata_ping_missing_required_field_raises_parse_error PASSED [  5%]
+tests/test_odata_connectivity.py::test_odata_ping_http_401_raises_authentication_error PASSED [  5%]
+tests/test_odata_connectivity.py::test_odata_ping_http_403_raises_authentication_error PASSED [  5%]
+tests/test_odata_connectivity.py::test_odata_ping_http_404_raises_gateway_error PASSED [  6%]
+tests/test_odata_connectivity.py::test_odata_ping_http_500_raises_gateway_error PASSED [  6%]
+tests/test_odata_connectivity.py::test_odata_ping_http_503_raises_gateway_error PASSED [  6%]
+tests/test_odata_connectivity.py::test_odata_ping_ssl_error_raises_tls_error PASSED [  6%]
+tests/test_odata_connectivity.py::test_odata_ping_connect_error_raises_connection_error PASSED [  7%]
+tests/test_odata_connectivity.py::test_odata_ping_timeout_raises_timeout_error PASSED [  7%]
+tests/test_odata_connectivity.py::test_odata_ping_connect_timeout_raises_timeout_error PASSED [  7%]
+tests/test_odata_connectivity.py::test_odata_ping_missing_base_url_raises_configuration_error PASSED [  7%]
+tests/test_odata_connectivity.py::test_odata_ping_missing_user_raises_configuration_error PASSED [  8%]
+tests/test_odata_connectivity.py::test_odata_ping_missing_password_raises_configuration_error PASSED [  8%]
+tests/test_odata_connectivity.py::test_odata_ping_multiple_missing_fields_listed_in_error PASSED [  8%]
+tests/test_odata_connectivity.py::test_odata_ping_password_not_in_configuration_error PASSED [  9%]
+tests/test_odata_connectivity.py::test_odata_ping_password_not_in_authentication_error PASSED [  9%]
+tests/test_odata_connectivity.py::test_odata_ping_password_not_in_tls_error PASSED [  9%]
+tests/test_odata_connectivity.py::test_odata_provider_call_allowed_function_raises_not_implemented PASSED [  9%]
+tests/test_odata_connectivity.py::test_odata_service_root_no_trailing_slash PASSED [ 10%]
+tests/test_odata_connectivity.py::test_odata_service_root_correct_path PASSED [ 10%]
+tests/test_odata_connectivity.py::test_odata_tls_verify_default_is_not_false PASSED [ 10%]
+tests/test_odata_connectivity.py::test_odata_tls_verify_default_uses_truststore_when_available PASSED [ 11%]
+tests/test_odata_connectivity.py::test_odata_tls_verify_fallback_to_true_without_truststore PASSED [ 11%]
+tests/test_odata_connectivity.py::test_odata_tls_verify_returns_ca_bundle_path_when_set PASSED [ 11%]
+tests/test_odata_connectivity.py::test_odata_tls_verify_ca_bundle_takes_priority_over_truststore PASSED [ 11%]
+tests/test_odata_connectivity.py::test_odata_tls_verify_false_never_returned PASSED [ 12%]
+tests/test_odata_connectivity.py::test_factory_mode_odata_returns_odata_provider PASSED [ 12%]
+tests/test_odata_connectivity.py::test_factory_mode_local_returns_local_provider PASSED [ 12%]
+tests/test_odata_connectivity.py::test_factory_mode_btp_returns_btp_provider PASSED [ 12%]
+tests/test_odata_connectivity.py::test_factory_invalid_mode_raises_configuration_error PASSED [ 13%]
+tests/test_odata_connectivity.py::test_api_sap_ping_odata_success_returns_200 PASSED [ 13%]
+tests/test_odata_connectivity.py::test_api_sap_ping_odata_configuration_error_returns_422 PASSED [ 13%]
+tests/test_odata_connectivity.py::test_api_sap_ping_odata_tls_error_returns_503 PASSED [ 14%]
+tests/test_odata_connectivity.py::test_api_sap_ping_odata_timeout_returns_503 PASSED [ 14%]
+tests/test_odata_connectivity.py::test_api_sap_ping_odata_auth_error_returns_503 PASSED [ 14%]
+tests/test_odata_connectivity.py::test_api_sap_ping_odata_gateway_error_returns_503 PASSED [ 14%]
+tests/test_odata_connectivity.py::test_api_sap_ping_odata_response_parse_error_returns_503 PASSED [ 15%]
+tests/test_odata_connectivity.py::test_health_endpoint_independent_of_odata PASSED [ 15%]
+tests/test_odata_connectivity.py::test_odata_password_never_in_api_response PASSED [ 15%]
+tests/test_odata_connectivity.py::test_odata_configuration_error_message_never_contains_password PASSED [ 15%]
+tests/test_odata_connectivity.py::test_odata_normalized_response_matches_spec PASSED [ 16%]
+tests/test_phase3_api.py::test_search_returns_200_with_objects PASSED    [ 16%]
+tests/test_phase3_api.py::test_search_200_zero_results PASSED            [ 16%]
+tests/test_phase3_api.py::test_search_200_truncated_result PASSED        [ 17%]
+tests/test_phase3_api.py::test_search_response_contains_system_id_and_client PASSED [ 17%]
+tests/test_phase3_api.py::test_search_response_criteria_echo PASSED      [ 17%]
+tests/test_phase3_api.py::test_match_reason_name_pattern_in_response PASSED [ 17%]
+tests/test_phase3_api.py::test_match_reason_both_in_response PASSED      [ 18%]
+tests/test_phase3_api.py::test_empty_request_returns_422 PASSED          [ 18%]
+tests/test_phase3_api.py::test_no_selector_returns_422 PASSED            [ 18%]
+tests/test_phase3_api.py::test_unsupported_object_type_returns_422 PASSED [ 19%]
+tests/test_phase3_api.py::test_max_results_above_limit_returns_422 PASSED [ 19%]
+tests/test_phase3_api.py::test_invalid_name_pattern_returns_422 PASSED   [ 19%]
+tests/test_phase3_api.py::test_sap_connection_error_returns_503 PASSED   [ 19%]
+tests/test_phase3_api.py::test_sap_communication_error_returns_503 PASSED [ 20%]
+tests/test_phase3_api.py::test_sap_function_execution_error_returns_503 PASSED [ 20%]
+tests/test_phase3_api.py::test_rfc_runtime_unavailable_returns_501 PASSED [ 20%]
+tests/test_phase3_api.py::test_error_response_does_not_expose_stack_trace PASSED [ 20%]
+tests/test_phase3_api.py::test_all_custom_objects_true_accepted PASSED   [ 21%]
+tests/test_phase3_api.py::test_health_endpoint_still_returns_200 FAILED  [ 21%]
+tests/test_phase3_api.py::test_health_response_has_expected_fields PASSED [ 21%]
+tests/test_phase3_api.py::test_sap_ping_endpoint_still_exists PASSED     [ 22%]
+tests/test_phase3_api.py::test_docs_endpoint_reachable PASSED            [ 22%]
+tests/test_phase3_discovery.py::TestPackageResolution::test_root_package_only PASSED [ 22%]
+tests/test_phase3_discovery.py::TestPackageResolution::test_recursive_hierarchy PASSED [ 22%]
+tests/test_phase3_discovery.py::TestPackageResolution::test_duplicate_child_packages_deduplicated PASSED [ 23%]
+tests/test_phase3_discovery.py::TestPackageResolution::test_truncated_hierarchy_flagged PASSED [ 23%]
+tests/test_phase3_discovery.py::TestPackageResolution::test_empty_package_response PASSED [ 23%]
+tests/test_phase3_discovery.py::TestPackageResolution::test_sap_rfc_error_propagated PASSED [ 23%]
+tests/test_phase3_discovery.py::TestPackageResolution::test_normalised_package_uppercase PASSED [ 24%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_package_only_discovery PASSED [ 24%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_z_star_pattern_discovery PASSED [ 24%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_y_star_pattern_discovery PASSED [ 25%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_multiple_patterns_fan_out PASSED [ 25%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_multiple_packages_fan_out PASSED [ 25%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_object_type_filter_reflected_in_criteria PASSED [ 25%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_match_reason_package PASSED [ 26%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_match_reason_name_pattern PASSED [ 26%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_match_reason_both_preserved PASSED [ 26%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_duplicate_object_deduplication PASSED [ 26%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_package_pattern_merge_to_both PASSED [ 27%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_zero_results_valid_200 PASSED [ 27%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_truncated_result_flagged PASSED [ 27%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_max_results_cap_applied PASSED [ 28%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_total_matches_single_call PASSED [ 28%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_optional_fields_missing_handled PASSED [ 28%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_unknown_object_type_handled_safely PASSED [ 28%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_row_missing_object_type_skipped PASSED [ 29%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_row_missing_obj_name_skipped PASSED [ 29%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_all_custom_objects_injects_z_y_patterns PASSED [ 29%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_system_id_and_client_propagated PASSED [ 30%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_deterministic_sort_order PASSED [ 30%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_call_budget_exceeded_raises PASSED [ 30%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_sap_error_propagated PASSED [ 30%]
+tests/test_phase3_discovery.py::TestRepositoryDiscovery::test_multiple_types_multiple_packages PASSED [ 31%]
+tests/test_phase3_packages.py::test_get_packages_single_root_success PASSED [ 31%]
+tests/test_phase3_packages.py::test_get_packages_system_id_and_client_normalized PASSED [ 31%]
+tests/test_phase3_packages.py::test_get_packages_message_preserved PASSED [ 31%]
+tests/test_phase3_packages.py::test_get_packages_description_normalized PASSED [ 32%]
+tests/test_phase3_packages.py::test_get_packages_parent_package_empty_string_for_root PASSED [ 32%]
+tests/test_phase3_packages.py::test_get_packages_recursive_hierarchy PASSED [ 32%]
+tests/test_phase3_packages.py::test_get_packages_parent_set_on_children PASSED [ 33%]
+tests/test_phase3_packages.py::test_get_packages_max_depth_zero PASSED   [ 33%]
+tests/test_phase3_packages.py::test_get_packages_max_depth_one PASSED    [ 33%]
+tests/test_phase3_packages.py::test_get_packages_max_depth_twenty PASSED [ 33%]
+tests/test_phase3_packages.py::test_get_packages_truncated_true_when_any_row_truncated PASSED [ 34%]
+tests/test_phase3_packages.py::test_get_packages_truncated_false_when_no_row_truncated PASSED [ 34%]
+tests/test_phase3_packages.py::test_get_packages_truncated_string_false_stays_false PASSED [ 34%]
+tests/test_phase3_packages.py::test_get_packages_include_subpackages_false_in_result PASSED [ 34%]
+tests/test_phase3_packages.py::test_get_packages_include_subpackages_true_in_result PASSED [ 35%]
+tests/test_phase3_packages.py::test_get_packages_out_of_order_rows_sorted PASSED [ 35%]
+tests/test_phase3_packages.py::test_get_packages_exact_duplicate_rows_removed PASSED [ 35%]
+tests/test_phase3_packages.py::test_get_packages_conflicting_duplicate_first_kept PASSED [ 36%]
+tests/test_phase3_packages.py::test_get_packages_blank_package_name_skipped PASSED [ 36%]
+tests/test_phase3_packages.py::test_get_packages_root_not_at_depth_zero_raises_parse_error PASSED [ 36%]
+tests/test_phase3_packages.py::test_get_packages_empty_results_raises_not_found PASSED [ 36%]
+tests/test_phase3_packages.py::test_get_packages_not_found_error_contains_package_name PASSED [ 37%]
+tests/test_phase3_packages.py::test_get_packages_missing_d_raises_parse_error PASSED [ 37%]
+tests/test_phase3_packages.py::test_get_packages_missing_results_raises_parse_error PASSED [ 37%]
+tests/test_phase3_packages.py::test_get_packages_results_not_a_list_raises_parse_error PASSED [ 38%]
+tests/test_phase3_packages.py::test_get_packages_malformed_json_raises_parse_error PASSED [ 38%]
+tests/test_phase3_packages.py::test_get_packages_results_dict_not_list_raises_parse_error PASSED [ 38%]
+tests/test_phase3_packages.py::test_get_packages_http_401_raises_authentication_error PASSED [ 38%]
+tests/test_phase3_packages.py::test_get_packages_http_403_raises_authentication_error PASSED [ 39%]
+tests/test_phase3_packages.py::test_get_packages_http_404_raises_gateway_error PASSED [ 39%]
+tests/test_phase3_packages.py::test_get_packages_http_500_raises_gateway_error PASSED [ 39%]
+tests/test_phase3_packages.py::test_get_packages_ssl_error_raises_tls_error PASSED [ 39%]
+tests/test_phase3_packages.py::test_get_packages_connect_error_raises_connection_error PASSED [ 40%]
+tests/test_phase3_packages.py::test_get_packages_read_timeout_raises_timeout_error PASSED [ 40%]
+tests/test_phase3_packages.py::test_get_packages_connect_timeout_raises_timeout_error PASSED [ 40%]
+tests/test_phase3_packages.py::test_get_packages_missing_base_url_raises_configuration_error PASSED [ 41%]
+tests/test_phase3_packages.py::test_get_packages_missing_user_raises_configuration_error PASSED [ 41%]
+tests/test_phase3_packages.py::test_get_packages_missing_password_raises_configuration_error PASSED [ 41%]
+tests/test_phase3_packages.py::test_get_packages_password_not_in_configuration_error PASSED [ 41%]
+tests/test_phase3_packages.py::test_get_packages_password_not_in_authentication_error PASSED [ 42%]
+tests/test_phase3_packages.py::test_get_packages_password_not_in_tls_error PASSED [ 42%]
+tests/test_phase3_packages.py::test_coerce_bool_python_true PASSED       [ 42%]
+tests/test_phase3_packages.py::test_coerce_bool_python_false PASSED      [ 42%]
+tests/test_phase3_packages.py::test_coerce_bool_int_one PASSED           [ 43%]
+tests/test_phase3_packages.py::test_coerce_bool_int_zero PASSED          [ 43%]
+tests/test_phase3_packages.py::test_coerce_bool_string_true_lower PASSED [ 43%]
+tests/test_phase3_packages.py::test_coerce_bool_string_false_lower PASSED [ 44%]
+tests/test_phase3_packages.py::test_coerce_bool_string_True_capital PASSED [ 44%]
+tests/test_phase3_packages.py::test_coerce_bool_string_False_capital PASSED [ 44%]
+tests/test_phase3_packages.py::test_coerce_bool_string_X_sap_true PASSED [ 44%]
+tests/test_phase3_packages.py::test_coerce_bool_string_x_lower PASSED    [ 45%]
+tests/test_phase3_packages.py::test_coerce_bool_string_one PASSED        [ 45%]
+tests/test_phase3_packages.py::test_coerce_bool_string_zero PASSED       [ 45%]
+tests/test_phase3_packages.py::test_coerce_bool_string_empty PASSED      [ 46%]
+tests/test_phase3_packages.py::test_odata_escape_no_special_chars PASSED [ 46%]
+tests/test_phase3_packages.py::test_odata_escape_single_quote_doubled PASSED [ 46%]
+tests/test_phase3_packages.py::test_odata_escape_multiple_single_quotes PASSED [ 46%]
+tests/test_phase3_packages.py::test_odata_escape_no_mutation_of_safe_chars PASSED [ 47%]
+tests/test_phase3_packages.py::test_service_resolve_packages_uppercases_package PASSED [ 47%]
+tests/test_phase3_packages.py::test_service_resolve_packages_strips_whitespace PASSED [ 47%]
+tests/test_phase3_packages.py::test_service_resolve_packages_strips_and_uppercases PASSED [ 47%]
+tests/test_phase3_packages.py::test_service_resolve_packages_blank_raises_value_error PASSED [ 48%]
+tests/test_phase3_packages.py::test_service_resolve_packages_empty_raises_value_error PASSED [ 48%]
+tests/test_phase3_packages.py::test_service_resolve_packages_max_depth_negative_raises_value_error PASSED [ 48%]
+tests/test_phase3_packages.py::test_service_resolve_packages_max_depth_21_raises_value_error PASSED [ 49%]
+tests/test_phase3_packages.py::test_service_resolve_packages_max_depth_zero_accepted PASSED [ 49%]
+tests/test_phase3_packages.py::test_service_resolve_packages_max_depth_twenty_accepted PASSED [ 49%]
+tests/test_phase3_packages.py::test_service_resolve_packages_no_z_prefix_required PASSED [ 49%]
+tests/test_phase3_packages.py::test_api_packages_200_default_params PASSED [ 50%]
+tests/test_phase3_packages.py::test_api_packages_200_include_subpackages_true PASSED [ 50%]
+tests/test_phase3_packages.py::test_api_packages_200_response_schema_complete PASSED [ 50%]
+tests/test_phase3_packages.py::test_api_packages_200_truncated_propagated PASSED [ 50%]
+tests/test_phase3_packages.py::test_api_packages_404_package_not_found PASSED [ 51%]
+tests/test_phase3_packages.py::test_api_packages_422_blank_package PASSED [ 51%]
+tests/test_phase3_packages.py::test_api_packages_422_max_depth_too_large PASSED [ 51%]
+tests/test_phase3_packages.py::test_api_packages_422_max_depth_negative PASSED [ 52%]
+tests/test_phase3_packages.py::test_api_packages_503_connection_error PASSED [ 52%]
+tests/test_phase3_packages.py::test_api_packages_503_tls_error PASSED    [ 52%]
+tests/test_phase3_packages.py::test_api_packages_503_timeout_error PASSED [ 52%]
+tests/test_phase3_packages.py::test_api_packages_503_gateway_error PASSED [ 53%]
+tests/test_phase3_packages.py::test_api_packages_401_maps_to_auth_error PASSED [ 53%]
+tests/test_phase3_packages.py::test_api_packages_response_no_metadata_field PASSED [ 53%]
+tests/test_phase3_packages.py::test_phase2_sap_ping_endpoint_still_exists PASSED [ 53%]
+tests/test_phase3_packages.py::test_phase2_health_endpoint_still_works PASSED [ 54%]
+tests/test_phase3_validation.py::test_empty_request_rejected PASSED      [ 54%]
+tests/test_phase3_validation.py::test_all_fields_empty_and_all_custom_objects_false_rejected PASSED [ 54%]
+tests/test_phase3_validation.py::test_package_only_request_allowed PASSED [ 55%]
+tests/test_phase3_validation.py::test_pattern_only_request_allowed PASSED [ 55%]
+tests/test_phase3_validation.py::test_all_custom_objects_true_allowed_with_no_other_selectors PASSED [ 55%]
+tests/test_phase3_validation.py::test_package_and_pattern_combined_allowed PASSED [ 55%]
+tests/test_phase3_validation.py::test_multiple_packages_normalised PASSED [ 56%]
+tests/test_phase3_validation.py::test_duplicate_packages_removed PASSED  [ 56%]
+tests/test_phase3_validation.py::test_lowercase_package_converted_to_uppercase PASSED [ 56%]
+tests/test_phase3_validation.py::test_blank_package_entries_dropped PASSED [ 57%]
+tests/test_phase3_validation.py::test_all_blank_packages_treated_as_empty PASSED [ 57%]
+tests/test_phase3_validation.py::test_name_patterns_uppercased PASSED    [ 57%]
+tests/test_phase3_validation.py::test_duplicate_name_patterns_removed PASSED [ 57%]
+tests/test_phase3_validation.py::test_specific_patterns_normalised PASSED [ 58%]
+tests/test_phase3_validation.py::test_invalid_pattern_semicolon_rejected PASSED [ 58%]
+tests/test_phase3_validation.py::test_invalid_pattern_sql_select_rejected PASSED [ 58%]
+tests/test_phase3_validation.py::test_invalid_pattern_single_quote_rejected PASSED [ 58%]
+tests/test_phase3_validation.py::test_valid_sap_wildcard_plus_accepted PASSED [ 59%]
+tests/test_phase3_validation.py::test_supported_object_types_accepted PASSED [ 59%]
+tests/test_phase3_validation.py::test_object_types_uppercased PASSED     [ 59%]
+tests/test_phase3_validation.py::test_duplicate_object_types_removed PASSED [ 60%]
+tests/test_phase3_validation.py::test_unsupported_object_type_rejected PASSED [ 60%]
+tests/test_phase3_validation.py::test_empty_object_types_accepted PASSED [ 60%]
+tests/test_phase3_validation.py::test_all_phase3_object_types_accepted PASSED [ 60%]
+tests/test_phase3_validation.py::test_default_max_results_is_1000 PASSED [ 61%]
+tests/test_phase3_validation.py::test_max_results_minimum_is_1 PASSED    [ 61%]
+tests/test_phase3_validation.py::test_max_results_at_hard_limit PASSED   [ 61%]
+tests/test_phase3_validation.py::test_max_results_above_hard_limit_rejected PASSED [ 61%]
+tests/test_phase3_validation.py::test_max_results_zero_rejected PASSED   [ 62%]
+tests/test_phase3_validation.py::test_all_custom_objects_and_packages_can_coexist PASSED [ 62%]
+tests/test_phase3_validation.py::test_all_custom_objects_and_patterns_can_coexist PASSED [ 62%]
+tests/test_phase3_validation.py::test_include_subpackages_defaults_to_false PASSED [ 63%]
+tests/test_phase3_validation.py::test_include_subpackages_can_be_set_true PASSED [ 63%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_prog_metadata_happy_path PASSED [ 63%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_clas_metadata PASSED [ 63%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_fugr_metadata_with_function_group PASSED [ 64%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_tabl_metadata_with_table_class PASSED [ 64%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_dtel_metadata PASSED [ 64%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_tran_metadata PASSED [ 65%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_msag_metadata PASSED [ 65%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_func_metadata PASSED [ 65%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_found_false_raises_not_found PASSED [ 65%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_found_abap_false_string_raises_not_found PASSED [ 66%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_found_blank_string_raises_not_found PASSED [ 66%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_empty_results_raises_not_found PASSED [ 66%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_blank_optional_fields_become_none PASSED [ 66%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_blank_dates_become_none PASSED [ 67%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_dates_preserved_as_yyyymmdd PASSED [ 67%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_description_unicode PASSED [ 67%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_warning_field_preserved PASSED [ 68%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_missing_d_envelope_raises_parse_error PASSED [ 68%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_missing_results_raises_parse_error PASSED [ 68%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_results_not_list_raises_parse_error PASSED [ 68%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_result_row_not_dict_raises_parse_error PASSED [ 69%]
+tests/test_phase4_provider.py::TestParseObjectMetadata::test_system_id_and_client_populated PASSED [ 69%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_single_component_single_line PASSED [ 69%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_multiple_lines_in_order PASSED [ 69%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_out_of_order_lines_sorted PASSED [ 70%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_multiple_components_preserved PASSED [ 70%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_component_ordering_preserved PASSED [ 70%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_truncated_flag_propagated PASSED [ 71%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_truncated_false_by_default PASSED [ 71%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_found_false_single_row_raises_not_found PASSED [ 71%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_empty_results_returns_empty_source PASSED [ 71%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_duplicate_identical_line_skipped PASSED [ 72%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_conflicting_duplicate_line_raises_integrity_error PASSED [ 72%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_source_text_derived_from_ordered_lines PASSED [ 72%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_unicode_source_preserved PASSED [ 73%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_blank_source_line_preserved PASSED [ 73%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_source_line_with_quotes PASSED [ 73%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_source_line_with_backslash PASSED [ 73%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_source_line_abap_comment PASSED [ 74%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_max_lines_preserved_in_result PASSED [ 74%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_system_id_and_client_from_first_row PASSED [ 74%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_missing_d_envelope_raises_parse_error PASSED [ 74%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_missing_results_raises_parse_error PASSED [ 75%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_results_not_list_raises_parse_error PASSED [ 75%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_result_row_not_dict_raises_parse_error PASSED [ 75%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_invalid_line_no_skipped PASSED [ 76%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_intf_source PASSED [ 76%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_fugr_multiple_includes PASSED [ 76%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_func_source PASSED [ 76%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_tabl_structured_definition PASSED [ 77%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_enqu_source PASSED [ 77%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_tran_definition PASSED [ 77%]
+tests/test_phase4_provider.py::TestParseObjectSource::test_msag_definition PASSED [ 77%]
+tests/test_phase4_provider.py::TestGetObjectMetadataHTTP::test_metadata_200_success PASSED [ 78%]
+tests/test_phase4_provider.py::TestGetObjectMetadataHTTP::test_metadata_401_raises_auth_error PASSED [ 78%]
+tests/test_phase4_provider.py::TestGetObjectMetadataHTTP::test_metadata_500_raises_gateway_error PASSED [ 78%]
+tests/test_phase4_provider.py::TestGetObjectMetadataHTTP::test_metadata_invalid_json_raises_parse_error PASSED [ 79%]
+tests/test_phase4_provider.py::TestGetObjectMetadataHTTP::test_metadata_connection_error_raises_sap_connection_error PASSED [ 79%]
+tests/test_phase4_provider.py::TestGetObjectSourceHTTP::test_source_200_success PASSED [ 79%]
+tests/test_phase4_provider.py::TestGetObjectSourceHTTP::test_source_401_raises_auth_error PASSED [ 79%]
+tests/test_phase4_provider.py::TestGetObjectSourceHTTP::test_source_unexpected_status_raises_communication_error PASSED [ 80%]
+tests/test_phase4_provider.py::TestGetObjectSourceHTTP::test_source_timeout_raises_timeout_error PASSED [ 80%]
+tests/test_phase4_service_api.py::TestServiceIdentifierNormalisation::test_object_type_trimmed_and_uppercased PASSED [ 80%]
+tests/test_phase4_service_api.py::TestServiceIdentifierNormalisation::test_object_name_trimmed_and_uppercased PASSED [ 80%]
+tests/test_phase4_service_api.py::TestServiceIdentifierNormalisation::test_blank_object_type_raises_value_error PASSED [ 81%]
+tests/test_phase4_service_api.py::TestServiceIdentifierNormalisation::test_blank_object_name_raises_value_error PASSED [ 81%]
+tests/test_phase4_service_api.py::TestServiceIdentifierNormalisation::test_blank_object_type_source_raises_value_error PASSED [ 81%]
+tests/test_phase4_service_api.py::TestServiceIdentifierNormalisation::test_blank_object_name_source_raises_value_error PASSED [ 82%]
+tests/test_phase4_service_api.py::TestServiceTypeValidation::test_unsupported_type_raises_value_error PASSED [ 82%]
+tests/test_phase4_service_api.py::TestServiceTypeValidation::test_prog_is_supported PASSED [ 82%]
+tests/test_phase4_service_api.py::TestServiceTypeValidation::test_clas_is_supported PASSED [ 82%]
+tests/test_phase4_service_api.py::TestServiceTypeValidation::test_func_is_supported PASSED [ 83%]
+tests/test_phase4_service_api.py::TestServiceTypeValidation::test_all_phase3_types_supported_for_metadata PASSED [ 83%]
+tests/test_phase4_service_api.py::TestServiceMaxLinesValidation::test_default_max_lines_5000 PASSED [ 83%]
+tests/test_phase4_service_api.py::TestServiceMaxLinesValidation::test_max_lines_zero_raises_value_error PASSED [ 84%]
+tests/test_phase4_service_api.py::TestServiceMaxLinesValidation::test_max_lines_negative_raises_value_error PASSED [ 84%]
+tests/test_phase4_service_api.py::TestServiceMaxLinesValidation::test_max_lines_20001_raises_value_error PASSED [ 84%]
+tests/test_phase4_service_api.py::TestServiceMaxLinesValidation::test_max_lines_1_accepted PASSED [ 84%]
+tests/test_phase4_service_api.py::TestServiceMaxLinesValidation::test_max_lines_20000_accepted PASSED [ 85%]
+tests/test_phase4_service_api.py::TestServiceErrorNormalisation::test_not_found_propagated PASSED [ 85%]
+tests/test_phase4_service_api.py::TestServiceErrorNormalisation::test_sap_auth_error_propagated PASSED [ 85%]
+tests/test_phase4_service_api.py::TestServiceErrorNormalisation::test_sap_connection_error_propagated PASSED [ 85%]
+tests/test_phase4_service_api.py::TestServiceErrorNormalisation::test_data_integrity_error_propagated PASSED [ 86%]
+tests/test_phase4_service_api.py::TestServiceErrorNormalisation::test_parse_error_propagated PASSED [ 86%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_200 PASSED [ 86%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_object_type_normalised PASSED [ 87%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_404_not_found PASSED [ 87%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_422_unsupported_type PASSED [ 87%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_503_sap_unavailable PASSED [ 87%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_503_sap_timeout PASSED [ 88%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_503_gateway_error PASSED [ 88%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_no_secret_leakage PASSED [ 88%]
+tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_response_schema PASSED [ 88%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_200_default_max_lines PASSED [ 89%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_200_custom_max_lines PASSED [ 89%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_max_lines_1 PASSED [ 89%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_max_lines_20000 PASSED [ 90%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_max_lines_0_rejected PASSED [ 90%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_max_lines_20001_rejected PASSED [ 90%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_404_not_found PASSED [ 90%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_422_unsupported_type PASSED [ 91%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_503_sap_connection_error PASSED [ 91%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_503_sap_timeout PASSED [ 91%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_truncation_in_response PASSED [ 92%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_no_secret_leakage PASSED [ 92%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_response_schema PASSED [ 92%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_object_type_normalised PASSED [ 92%]
+tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_component_structure PASSED [ 93%]
+tests/test_phase4_service_api.py::TestPhase13RegressionWithPhase4App::test_health_still_works PASSED [ 93%]
+tests/test_phase4_service_api.py::TestPhase13RegressionWithPhase4App::test_search_endpoint_not_calling_metadata_or_source PASSED [ 93%]
+tests/test_sap_connectivity.py::test_valid_local_configuration_passes_validation PASSED [ 93%]
+tests/test_sap_connectivity.py::test_missing_required_local_field_raises_configuration_error[host-host] PASSED [ 94%]
+tests/test_sap_connectivity.py::test_missing_required_local_field_raises_configuration_error[client-client] PASSED [ 94%]
+tests/test_sap_connectivity.py::test_missing_required_local_field_raises_configuration_error[user-user] PASSED [ 94%]
+tests/test_sap_connectivity.py::test_missing_required_local_field_raises_configuration_error[password-password] PASSED [ 95%]
+tests/test_sap_connectivity.py::test_missing_rfc_runtime_raises_controlled_error PASSED [ 95%]
+tests/test_sap_connectivity.py::test_factory_selects_local_provider_by_default PASSED [ 95%]
+tests/test_sap_connectivity.py::test_factory_handles_btp_mode_without_silent_fallback PASSED [ 95%]
+tests/test_sap_connectivity.py::test_successful_mocked_z_mcp_repo_ping PASSED [ 96%]
+tests/test_sap_connectivity.py::test_failed_mocked_z_mcp_repo_ping_raises_function_execution_error PASSED [ 96%]
+tests/test_sap_connectivity.py::test_authentication_failure_is_mapped_to_sap_authentication_error PASSED [ 96%]
+tests/test_sap_connectivity.py::test_communication_failure_is_mapped_to_controlled_error PASSED [ 96%]
+tests/test_sap_connectivity.py::test_allowlist_permits_z_mcp_repo_ping PASSED [ 97%]
+tests/test_sap_connectivity.py::test_allowlist_permits_rfc_system_info PASSED [ 97%]
+tests/test_sap_connectivity.py::test_allowlist_rejects_unapproved_function PASSED [ 97%]
+tests/test_sap_connectivity.py::test_call_allowed_function_rejects_unapproved_name_before_sap_call PASSED [ 98%]
+tests/test_sap_connectivity.py::test_password_never_appears_in_configuration_exception_text PASSED [ 98%]
+tests/test_sap_connectivity.py::test_password_never_appears_in_sap_ping_api_response PASSED [ 98%]
+tests/test_sap_connectivity.py::test_health_endpoint_independent_of_sap PASSED [ 98%]
+tests/test_sap_connectivity.py::test_sap_ping_endpoint_returns_normalized_model PASSED [ 99%]
+tests/test_sap_connectivity.py::test_sap_ping_endpoint_maps_configuration_error_to_422 PASSED [ 99%]
+tests/test_sap_connectivity.py::test_sap_ping_endpoint_maps_runtime_unavailable_to_501 PASSED [ 99%]
+tests/test_search_request.py::test_search_request_normalizes_filters PASSED [100%]
+
+================================== FAILURES ===================================
+____________________________ test_health_endpoint _____________________________
+tests\test_health.py:12: in test_health_endpoint
+    assert body["version"] == "0.3.0"
+E   AssertionError: assert '0.4.0' == '0.3.0'
+E     
+E     - 0.3.0
+E     ?   ^
+E     + 0.4.0
+E     ?   ^
+___________________ test_health_endpoint_still_returns_200 ____________________
+tests\test_phase3_api.py:363: in test_health_endpoint_still_returns_200
+    assert data["version"] == "0.3.0"
+E   AssertionError: assert '0.4.0' == '0.3.0'
+E     
+E     - 0.3.0
+E     ?   ^
+E     + 0.4.0
+E     ?   ^
+============================== warnings summary ===============================
+..\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_foundation.py::test_health_endpoint_returns_200
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:874: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:772: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    old_loop_policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:777: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1183: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:889: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:794: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(old_loop_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:942: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:966: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:978: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_health.py::test_health_endpoint - AssertionError: assert '0...
+FAILED tests/test_phase3_api.py::test_health_endpoint_still_returns_200 - Ass...
+================ 2 failed, 361 passed, 1325 warnings in 17.70s ================

@@ -1,0 +1,8 @@
+PEM length: 1643 chars
+
+RESULT: ssl.load_verify_locations() ACCEPTED the cert as a CA cert
+  -> This cert CAN be used as a CA bundle with httpx verify=path
+
+cryptography package not installed — skipping detailed analysis
+
+CA bundle usable with httpx verify=path: True

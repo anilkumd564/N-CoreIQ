@@ -1,0 +1,197 @@
+........................................................................ [ 19%]
+........................................................................ [ 39%]
+........................................................................ [ 59%]
+........................................................................ [ 79%]
+..........................FF..FFF.F......F.FFF...F.F.................... [ 99%]
+...                                                                      [100%]
+================================== FAILURES ===================================
+___________________ TestMetadataEndpoint.test_metadata_200 ____________________
+tests\test_phase4_service_api.py:309: in test_metadata_200
+    assert resp.status_code == 200
+E   assert 404 == 200
+E    +  where 404 = <Response [404 Not Found]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+__________ TestMetadataEndpoint.test_metadata_object_type_normalised __________
+tests\test_phase4_service_api.py:318: in test_metadata_object_type_normalised
+    assert resp.status_code == 200
+E   assert 404 == 200
+E    +  where 404 = <Response [404 Not Found]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+___________ TestMetadataEndpoint.test_metadata_503_sap_unavailable ____________
+tests\test_phase4_service_api.py:335: in test_metadata_503_sap_unavailable
+    assert resp.status_code == 503
+E   assert 404 == 503
+E    +  where 404 = <Response [404 Not Found]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+_____________ TestMetadataEndpoint.test_metadata_503_sap_timeout ______________
+tests\test_phase4_service_api.py:340: in test_metadata_503_sap_timeout
+    assert resp.status_code == 503
+E   assert 404 == 503
+E    +  where 404 = <Response [404 Not Found]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+____________ TestMetadataEndpoint.test_metadata_503_gateway_error _____________
+tests\test_phase4_service_api.py:345: in test_metadata_503_gateway_error
+    assert resp.status_code == 503
+E   assert 404 == 503
+E    +  where 404 = <Response [404 Not Found]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+_____________ TestMetadataEndpoint.test_metadata_response_schema ______________
+tests\test_phase4_service_api.py:357: in test_metadata_response_schema
+    assert resp.status_code == 200
+E   assert 404 == 200
+E    +  where 404 = <Response [404 Not Found]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+________________ TestSourceEndpoint.test_source_404_not_found _________________
+tests\test_phase4_service_api.py:401: in test_source_404_not_found
+    assert resp.status_code == 404
+E   assert 200 == 404
+E    +  where 200 = <Response [200 OK]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+___________ TestSourceEndpoint.test_source_503_sap_connection_error ___________
+tests\test_phase4_service_api.py:412: in test_source_503_sap_connection_error
+    assert resp.status_code == 503
+E   assert 200 == 503
+E    +  where 200 = <Response [200 OK]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+_______________ TestSourceEndpoint.test_source_503_sap_timeout ________________
+tests\test_phase4_service_api.py:417: in test_source_503_sap_timeout
+    assert resp.status_code == 503
+E   assert 200 == 503
+E    +  where 200 = <Response [200 OK]>.status_code
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+____________ TestSourceEndpoint.test_source_truncation_in_response ____________
+tests\test_phase4_service_api.py:423: in test_source_truncation_in_response
+    assert resp.json()["truncated"] is True
+E   assert False is True
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+_____________ TestSourceEndpoint.test_source_component_structure ______________
+tests\test_phase4_service_api.py:448: in test_source_component_structure
+    assert data["component_count"] == 1
+E   assert 0 == 1
+------------------------------ Captured log call ------------------------------
+WARNING  app.sap.connection.odata:odata.py:124 sap_odata_tls_verification_disabled
+_ TestPhase13RegressionWithPhase4App.test_search_endpoint_not_calling_metadata_or_source _
+tests\test_phase4_service_api.py:485: in test_search_endpoint_not_calling_metadata_or_source
+    with _patch("app.api.routes.get_discovery_service", return_value=mock_discovery):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python314\Lib\unittest\mock.py:1510: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+C:\Program Files\Python314\Lib\unittest\mock.py:1480: in get_original
+    raise AttributeError(
+E   AttributeError: <module 'app.api.routes' from 'c:\\sap-repository-intelligence\\app\\api\\routes.py'> does not have the attribute 'get_discovery_service'
+============================== warnings summary ===============================
+..\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_foundation.py::test_health_endpoint_returns_200
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:874: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:772: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    old_loop_policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:777: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1183: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:889: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:794: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(old_loop_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:942: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:966: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:978: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_200
+FAILED tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_object_type_normalised
+FAILED tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_503_sap_unavailable
+FAILED tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_503_sap_timeout
+FAILED tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_503_gateway_error
+FAILED tests/test_phase4_service_api.py::TestMetadataEndpoint::test_metadata_response_schema
+FAILED tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_404_not_found
+FAILED tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_503_sap_connection_error
+FAILED tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_503_sap_timeout
+FAILED tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_truncation_in_response
+FAILED tests/test_phase4_service_api.py::TestSourceEndpoint::test_source_component_structure
+FAILED tests/test_phase4_service_api.py::TestPhase13RegressionWithPhase4App::test_search_endpoint_not_calling_metadata_or_source
+12 failed, 351 passed, 1325 warnings in 48.75s

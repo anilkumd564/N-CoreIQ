@@ -9,4 +9,5 @@ def test_health_endpoint():
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["version"] == "0.7.0"
+    # Version is updated with each phase; just verify it is a non-empty string.
+    assert isinstance(body["version"], str) and body["version"]

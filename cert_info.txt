@@ -1,0 +1,4 @@
+﻿Subject: CN=*.wdf.sap.corp, OU=TDC, O=SAP-AG, L=Walldorf, S=BW, C=DE
+Issuer: CN=SDC_CA, OU=TDC, O=SAP-AG, L=Walldorf, S=BW, C=DE
+NotAfter: 11/15/2113 09:36:00
+Thumbprint: 2F306D3EB14AB79E416596FB883EA02A6E29EE01

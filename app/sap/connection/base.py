@@ -10,6 +10,7 @@ from app.sap.allowlist import ensure_allowed
 if TYPE_CHECKING:
     from app.models.repository import PackageResolutionResult
     from app.models.phase4 import RepositoryObjectMetadata, RepositoryObjectSource
+    from app.models.phase8 import DirectDependencyResult
 
 
 # ---------------------------------------------------------------------------
@@ -210,4 +211,41 @@ class SapConnectionProvider(ABC):
         raise SAPProviderNotImplementedError(
             f"{type(self).__name__} does not support source extraction via OData. "
             "Configure SAP_CONNECTION_MODE=odata to enable SourceLinesSet."
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 8 — Dependency Relations (OData DependencyRelationsSet)
+    # ------------------------------------------------------------------
+
+    async def get_object_dependencies(
+        self,
+        object_type: str,
+        object_name: str,
+        max_results: int = 1000,
+    ) -> "DirectDependencyResult":
+        """Retrieve direct dependency relationships for a SAP repository object.
+
+        Calls DependencyRelationsSet on ZNCOREIQ_REPO_SRV with a controlled
+        OData $filter for SourceObjectType, SourceObjectName, and MaxResults.
+
+        Default implementation raises SAPProviderNotImplementedError.
+        OData providers must override this method.
+
+        Args:
+            object_type: Normalised SAP object type (e.g. ``PROG``).
+            object_name: Normalised SAP object name (e.g. ``ZMY_PROGRAM``).
+            max_results: Maximum number of dependency rows to return (1–10000).
+
+        Returns:
+            DirectDependencyResult with all dependency rows and metadata.
+
+        Raises:
+            DependencyDataIntegrityError: if ECC returns malformed dependency data.
+            SAPProviderNotImplementedError: if not overridden.
+        """
+        from app.sap.exceptions import SAPProviderNotImplementedError
+
+        raise SAPProviderNotImplementedError(
+            f"{type(self).__name__} does not support dependency retrieval via OData. "
+            "Configure SAP_CONNECTION_MODE=odata to enable DependencyRelationsSet."
         )

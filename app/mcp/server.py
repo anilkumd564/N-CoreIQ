@@ -34,34 +34,46 @@ _JM = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=
 
 
 class NCoreIQMCPServer:
-    """N-CoreIQ MCP server — wraps FastMCP with 11 registered tools.
+    """N-CoreIQ MCP server — wraps FastMCP with 15 registered tools.
 
     Services injected at construction for testability:
       sap_provider  — ping
       discovery_svc — packages, search
       object_svc    — metadata, source
       job_svc       — all job operations
+      dep_svc       — dependency intelligence (Phase 8)
     """
 
-    def __init__(self, sap_provider, discovery_svc, object_svc, job_svc, settings=None):
+    def __init__(self, sap_provider, discovery_svc, object_svc, job_svc, settings=None, dep_svc=None):
         self._provider = sap_provider
         self._discovery = discovery_svc
         self._object = object_svc
         self._jobs = job_svc
+        self._dep = dep_svc
         self._settings = settings
 
         if settings is not None:
             self._max_search = min(getattr(settings, "ncoreiq_mcp_max_search_results", _DEFAULT_SEARCH), _HARD_SEARCH)
             self._max_source = min(getattr(settings, "ncoreiq_mcp_max_source_lines", _DEFAULT_SOURCE), _HARD_SOURCE)
             self._max_jobs = min(getattr(settings, "ncoreiq_mcp_max_job_list_results", _DEFAULT_JOBS), _HARD_JOBS)
+            self._max_dep_results = min(getattr(settings, "ncoreiq_mcp_max_dep_results", 200), 1000)
+            self._dep_max_depth = min(getattr(settings, "ncoreiq_mcp_dep_max_depth", 3), 3)
+            self._dep_max_nodes = min(getattr(settings, "ncoreiq_mcp_dep_max_nodes", 200), 200)
+            self._dep_max_edges = min(getattr(settings, "ncoreiq_mcp_dep_max_edges", 500), 500)
+            self._dep_max_candidates = min(getattr(settings, "ncoreiq_mcp_dep_max_candidates", 50), 50)
             name = getattr(settings, "ncoreiq_mcp_server_name", "N-CoreIQ")
-            version = getattr(settings, "app_version", "0.7.0")
+            version = getattr(settings, "app_version", "0.8.0")
         else:
             self._max_search = _DEFAULT_SEARCH
             self._max_source = _DEFAULT_SOURCE
             self._max_jobs = _DEFAULT_JOBS
+            self._max_dep_results = 200
+            self._dep_max_depth = 3
+            self._dep_max_nodes = 200
+            self._dep_max_edges = 500
+            self._dep_max_candidates = 50
             name = "N-CoreIQ"
-            version = "0.7.0"
+            version = "0.8.0"
 
         self._version = version
         self.mcp = FastMCP(
@@ -70,6 +82,7 @@ class NCoreIQMCPServer:
                 "SAP Repository Intelligence — controlled read-only access to SAP ECC repository. "
                 f"Version: {version}. "
                 "Workflow: search_repository → get_object_metadata → get_object_source. "
+                "Dependencies: get_dependencies → traverse_dependencies | find_dependents | analyze_dependency_impact. "
                 "Bulk extraction: start_extraction_job → poll get_extraction_job → get_extraction_result."
             ),
         )
@@ -217,6 +230,86 @@ class NCoreIQMCPServer:
         m.add_tool(get_extraction_result, name="get_extraction_result",
                    description="Get extraction result summary for a completed job. Large artifacts not returned inline.",
                    annotations=_RO)
+
+        # 12. get_dependencies (Phase 8)
+        async def get_dependencies(
+            object_type: Annotated[str, "SAP object type: PROG, CLAS, INTF, FUGR, FUNC, TABL, VIEW, DTEL, TRAN."],
+            object_name: Annotated[str, "Exact SAP object name (auto-uppercased)."],
+            relationship_types: Annotated[Optional[list[str]], "Optional relationship type filter (e.g. CALLS_FUNCTION)."] = None,
+            min_confidence: Annotated[Optional[str], "Minimum confidence: EXACT, HIGH, MEDIUM, LOW."] = None,
+            max_results: Annotated[int, "Maximum dependency rows (1-1000, default 200)."] = 200,
+        ) -> dict:
+            """Get direct SAP dependency relationships for one object. Read-only."""
+            return await s._get_dependencies(object_type, object_name, relationship_types, min_confidence, max_results)
+        m.add_tool(get_dependencies, name="get_dependencies",
+                   description=(
+                       "Get direct SAP dependency relationships for one repository object. "
+                       "Returns relationship types, confidence levels, evidence, and dynamic flags. Read-only."
+                   ), annotations=_RO)
+
+        # 13. traverse_dependencies (Phase 8)
+        async def traverse_dependencies(
+            object_type: Annotated[str, "SAP object type of root object."],
+            object_name: Annotated[str, "SAP object name of root object."],
+            max_depth: Annotated[int, "Maximum traversal depth (1-3 for MCP)."] = 2,
+            relationship_types: Annotated[Optional[list[str]], "Optional relationship type filter."] = None,
+            min_confidence: Annotated[Optional[str], "Minimum confidence filter."] = None,
+            max_nodes: Annotated[int, "Maximum graph nodes (1-200 for MCP)."] = 100,
+            max_edges: Annotated[int, "Maximum graph edges (1-500 for MCP)."] = 300,
+        ) -> dict:
+            """Bounded forward BFS traversal of SAP dependency graph. Read-only."""
+            return await s._traverse_dependencies(
+                object_type, object_name, max_depth, relationship_types,
+                min_confidence, max_nodes, max_edges
+            )
+        m.add_tool(traverse_dependencies, name="traverse_dependencies",
+                   description=(
+                       "Bounded BFS forward traversal of SAP dependency relationships. "
+                       "Detects cycles, handles dynamic targets, uses request-local cache. Read-only."
+                   ), annotations=_RO)
+
+        # 14. find_dependents (Phase 8)
+        async def find_dependents(
+            object_type: Annotated[str, "SAP object type of target."],
+            object_name: Annotated[str, "SAP object name to find dependents of."],
+            packages: Annotated[Optional[list[str]], "Package scope for candidate search."] = None,
+            name_patterns: Annotated[Optional[list[str]], "Name pattern scope (e.g. Z*)."] = None,
+            all_custom_objects: Annotated[bool, "Search all Z*/Y* (explicit)."] = False,
+            relationship_types: Annotated[Optional[list[str]], "Optional relationship type filter."] = None,
+            min_confidence: Annotated[Optional[str], "Minimum confidence filter."] = None,
+            max_candidates: Annotated[int, "Maximum candidate objects to inspect (1-50 for MCP)."] = 50,
+        ) -> dict:
+            """Find SAP objects that depend on the specified target. Bounded scope required. Read-only."""
+            return await s._find_dependents(
+                object_type, object_name, packages, name_patterns,
+                all_custom_objects, relationship_types, min_confidence, max_candidates
+            )
+        m.add_tool(find_dependents, name="find_dependents",
+                   description=(
+                       "Find SAP repository objects that depend on the specified target object. "
+                       "Requires a bounded scope (packages or patterns). Read-only."
+                   ), annotations=_RO)
+
+        # 15. analyze_dependency_impact (Phase 8)
+        async def analyze_dependency_impact(
+            object_type: Annotated[str, "SAP object type of the object to analyse."],
+            object_name: Annotated[str, "SAP object name."],
+            packages: Annotated[Optional[list[str]], "Package scope for impact analysis."] = None,
+            name_patterns: Annotated[Optional[list[str]], "Name pattern scope."] = None,
+            all_custom_objects: Annotated[bool, "Search all Z*/Y* (explicit)."] = False,
+            relationship_types: Annotated[Optional[list[str]], "Optional relationship type filter."] = None,
+            min_confidence: Annotated[Optional[str], "Minimum confidence filter."] = None,
+        ) -> dict:
+            """Deterministic technical impact analysis. No AI. Read-only."""
+            return await s._analyze_dependency_impact(
+                object_type, object_name, packages, name_patterns,
+                all_custom_objects, relationship_types, min_confidence
+            )
+        m.add_tool(analyze_dependency_impact, name="analyze_dependency_impact",
+                   description=(
+                       "Deterministic technical impact analysis for a SAP object. "
+                       "Returns dependent counts, relationship distributions, and confidence stats. No AI/LLM. Read-only."
+                   ), annotations=_RO)
 
     # ------------------------------------------------------------------
     # Handlers
@@ -516,6 +609,264 @@ class NCoreIQMCPServer:
         return {"success": True, "operation": "get_extraction_result", **result}
 
     # ------------------------------------------------------------------
+    # Phase 8 — Dependency handlers
+    # ------------------------------------------------------------------
+
+    def _require_dep_service(self) -> None:
+        if self._dep is None:
+            raise MCPToolError(
+                "SERVICE_UNAVAILABLE",
+                "Dependency service is not configured in this MCP server instance.",
+            )
+
+    async def _get_dependencies(
+        self,
+        object_type: str,
+        object_name: str,
+        relationship_types: list[str] | None,
+        min_confidence: str | None,
+        max_results: int,
+    ) -> dict:
+        self._require_dep_service()
+        if not (object_type or "").strip():
+            raise MCPToolError("INVALID_ARGUMENT", "object_type is required.")
+        if not (object_name or "").strip():
+            raise MCPToolError("INVALID_ARGUMENT", "object_name is required.")
+        effective = min(int(max_results), self._max_dep_results)
+        try:
+            result = await self._dep.get_direct_dependencies(
+                object_type=object_type.strip().upper(),
+                object_name=object_name.strip().upper(),
+                relationship_types=relationship_types,
+                min_confidence=min_confidence,
+                max_results=effective,
+            )
+            rels = []
+            for r in result.relationships:
+                rels.append({
+                    "source_object_type": r.source_object_type,
+                    "source_object_name": r.source_object_name,
+                    "target_object_type": r.target_object_type,
+                    "target_object_name": r.target_object_name,
+                    "relationship_type": r.relationship_type.value,
+                    "confidence": r.confidence.value,
+                    "evidence_source": r.evidence_source,
+                    "source_component": r.source_component,
+                    "line_no": r.line_no,
+                    "dynamic": r.dynamic,
+                    "detail": r.detail,
+                })
+            return {
+                "success": True,
+                "operation": "get_dependencies",
+                "system_id": result.system_id,
+                "client": result.client,
+                "source_object_type": result.source_object_type,
+                "source_object_name": result.source_object_name,
+                "total_relations": result.total_relations,
+                "returned_relations": result.returned_relations,
+                "truncated": result.truncated,
+                "message": result.message,
+                "relationships": rels,
+            }
+        except MCPToolError:
+            raise
+        except Exception as exc:
+            raise map_exception(exc, "get_dependencies") from exc
+
+    async def _traverse_dependencies(
+        self,
+        object_type: str,
+        object_name: str,
+        max_depth: int,
+        relationship_types: list[str] | None,
+        min_confidence: str | None,
+        max_nodes: int,
+        max_edges: int,
+    ) -> dict:
+        self._require_dep_service()
+        from app.models.phase8 import DependencyTraversalRequest, RepositoryObjectReference
+
+        # Enforce MCP-specific limits
+        safe_depth = min(int(max_depth), self._dep_max_depth)
+        safe_nodes = min(int(max_nodes), self._dep_max_nodes)
+        safe_edges = min(int(max_edges), self._dep_max_edges)
+
+        try:
+            req = DependencyTraversalRequest(
+                root_object=RepositoryObjectReference(
+                    sap_object_type=object_type.strip().upper(),
+                    object_name=object_name.strip().upper(),
+                ),
+                max_depth=safe_depth,
+                relationship_types=relationship_types,
+                min_confidence=min_confidence,
+                max_nodes=safe_nodes,
+                max_edges=safe_edges,
+            )
+        except Exception as exc:
+            raise MCPToolError("INVALID_ARGUMENT", str(exc)) from exc
+
+        try:
+            graph = await self._dep.traverse_dependencies(req)
+            nodes = [{"sap_object_type": n.sap_object_type, "object_name": n.object_name, "depth": n.depth}
+                     for n in graph.nodes]
+            edges = []
+            for e in graph.edges:
+                edges.append({
+                    "source_type": e.source.sap_object_type, "source_name": e.source.object_name,
+                    "target_type": e.target.sap_object_type, "target_name": e.target.object_name,
+                    "relationship_type": e.relationship_type.value,
+                    "confidence": e.confidence.value,
+                    "dynamic": e.dynamic, "depth": e.depth, "creates_cycle": e.creates_cycle,
+                })
+            return {
+                "success": True, "operation": "traverse_dependencies",
+                "root_type": graph.root.sap_object_type, "root_name": graph.root.object_name,
+                "requested_max_depth": graph.requested_max_depth,
+                "depth_reached": graph.depth_reached,
+                "truncated": graph.truncated,
+                "cycles_detected": graph.cycles_detected,
+                "warnings": graph.warnings,
+                "node_count": graph.statistics.node_count,
+                "edge_count": graph.statistics.edge_count,
+                "sap_calls": graph.statistics.sap_calls,
+                "nodes": nodes,
+                "edges": edges,
+            }
+        except MCPToolError:
+            raise
+        except Exception as exc:
+            raise map_exception(exc, "traverse_dependencies") from exc
+
+    async def _find_dependents(
+        self,
+        object_type: str,
+        object_name: str,
+        packages: list[str] | None,
+        name_patterns: list[str] | None,
+        all_custom_objects: bool,
+        relationship_types: list[str] | None,
+        min_confidence: str | None,
+        max_candidates: int,
+    ) -> dict:
+        self._require_dep_service()
+        from app.models.phase8 import ReverseDependencyRequest, ReverseScopeSpec, RepositoryObjectReference
+
+        safe_candidates = min(int(max_candidates), self._dep_max_candidates)
+
+        try:
+            scope = ReverseScopeSpec(
+                packages=packages or [],
+                name_patterns=name_patterns or [],
+                all_custom_objects=all_custom_objects,
+                max_results=safe_candidates,
+            )
+            req = ReverseDependencyRequest(
+                target_object=RepositoryObjectReference(
+                    sap_object_type=object_type.strip().upper(),
+                    object_name=object_name.strip().upper(),
+                ),
+                scope=scope,
+                relationship_types=relationship_types,
+                min_confidence=min_confidence,
+                max_candidates=safe_candidates,
+            )
+        except Exception as exc:
+            raise MCPToolError("INVALID_ARGUMENT", str(exc)) from exc
+
+        try:
+            result = await self._dep.get_reverse_dependencies(req)
+            dependents = [
+                {
+                    "sap_object_type": d.sap_object_type,
+                    "object_name": d.object_name,
+                    "relationship_types": d.relationship_types,
+                    "confidence": d.confidence.value,
+                    "dynamic": d.dynamic,
+                }
+                for d in result.dependents
+            ]
+            return {
+                "success": True, "operation": "find_dependents",
+                "target_type": result.target_object.sap_object_type,
+                "target_name": result.target_object.object_name,
+                "candidate_count": result.candidate_count,
+                "matched_dependents": result.matched_dependents,
+                "truncated": result.truncated,
+                "warnings": result.warnings,
+                "sap_calls": result.statistics.sap_calls,
+                "dependents": dependents,
+            }
+        except MCPToolError:
+            raise
+        except Exception as exc:
+            raise map_exception(exc, "find_dependents") from exc
+
+    async def _analyze_dependency_impact(
+        self,
+        object_type: str,
+        object_name: str,
+        packages: list[str] | None,
+        name_patterns: list[str] | None,
+        all_custom_objects: bool,
+        relationship_types: list[str] | None,
+        min_confidence: str | None,
+    ) -> dict:
+        self._require_dep_service()
+        from app.models.phase8 import DependencyImpactRequest, ReverseScopeSpec, RepositoryObjectReference
+
+        try:
+            scope = ReverseScopeSpec(
+                packages=packages or [],
+                name_patterns=name_patterns or [],
+                all_custom_objects=all_custom_objects,
+                max_results=self._dep_max_candidates,
+            )
+            req = DependencyImpactRequest(
+                object=RepositoryObjectReference(
+                    sap_object_type=object_type.strip().upper(),
+                    object_name=object_name.strip().upper(),
+                ),
+                scope=scope,
+                relationship_types=relationship_types,
+                min_confidence=min_confidence,
+                max_candidates=self._dep_max_candidates,
+            )
+        except Exception as exc:
+            raise MCPToolError("INVALID_ARGUMENT", str(exc)) from exc
+
+        try:
+            result = await self._dep.get_impact_analysis(req)
+            impacted = [
+                {
+                    "sap_object_type": o.sap_object_type,
+                    "object_name": o.object_name,
+                    "relationship_types": o.relationship_types,
+                    "confidence": o.confidence.value,
+                    "dynamic": o.dynamic,
+                }
+                for o in result.impacted_objects
+            ]
+            return {
+                "success": True, "operation": "analyze_dependency_impact",
+                "target_type": result.target_object.sap_object_type,
+                "target_name": result.target_object.object_name,
+                "direct_dependent_count": result.direct_dependent_count,
+                "total_impacted_objects": result.total_impacted_objects,
+                "relationship_type_counts": result.relationship_type_counts,
+                "confidence_counts": result.confidence_counts,
+                "dynamic_reference_count": result.dynamic_reference_count,
+                "truncated": result.truncated,
+                "warnings": result.warnings,
+                "impacted_objects": impacted,
+            }
+        except MCPToolError:
+            raise
+        except Exception as exc:
+            raise map_exception(exc, "analyze_dependency_impact") from exc
+
+    # ------------------------------------------------------------------
     # Lifecycle helpers
     # ------------------------------------------------------------------
 
@@ -540,6 +891,8 @@ def create_server(settings=None) -> NCoreIQMCPServer:
 
     from app.sap.connection.factory import build_sap_connection_provider
     from app.services.repository import RepositoryService
+    from app.services.discovery import RepositoryDiscoveryService
+    from app.services.dependency import RepositoryDependencyService
     from app.services.object_service import RepositoryObjectService
     from app.jobs.store import SQLiteJobStore
     from app.jobs.artifacts import LocalArtifactStore
@@ -548,7 +901,9 @@ def create_server(settings=None) -> NCoreIQMCPServer:
 
     sap_provider = build_sap_connection_provider(settings)
     discovery_svc = RepositoryService(sap_provider)
+    discovery_raw = RepositoryDiscoveryService(sap_provider)
     object_svc = RepositoryObjectService(sap_provider)
+    dep_svc = RepositoryDependencyService(provider=sap_provider, discovery_service=discovery_raw)
 
     artifact_dir = settings.ncoreiq_job_artifact_dir
     os.makedirs(artifact_dir, exist_ok=True)
@@ -566,6 +921,7 @@ def create_server(settings=None) -> NCoreIQMCPServer:
         object_svc=object_svc,
         job_svc=job_svc,
         settings=settings,
+        dep_svc=dep_svc,
     )
 
 

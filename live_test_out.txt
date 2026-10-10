@@ -1,0 +1,12 @@
+============================================================
+N-CoreIQ — OData Connectivity Test
+============================================================
+  Connection mode : odata
+  OData base URL  : https://HYDRSAPT02.AMERICAS.GLOBAL.NTTDATA.COM:44300
+  OData service   : ZNCOREIQ_REPO_SRV
+  SAP client      : 800
+  Timeout         : 30s
+
+  Calling SystemInfoSet …
+
+  [FAIL] Connection error: SAP HTTPS certificate could not be validated. Configure SAP_ODATA__CA_BUNDLE with the path to the corporate CA bundle, or ensure the SAP Gateway certificate is trusted by the system CA store.

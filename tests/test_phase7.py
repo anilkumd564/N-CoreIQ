@@ -207,9 +207,9 @@ class TestToolRegistration:
             f"Missing tools: {self.EXPECTED_TOOLS - names}"
         )
 
-    async def test_tool_count_is_eleven(self, server):
+    async def test_tool_count_is_fifteen(self, server):
         tools = await server.mcp.list_tools()
-        assert len(tools) == 11
+        assert len(tools) == 15
 
     async def test_no_prohibited_tools_registered(self, server):
         tools = await server.mcp.list_tools()
@@ -919,7 +919,13 @@ class TestSettingsIntegration:
         settings.ncoreiq_mcp_max_source_lines = 200
         settings.ncoreiq_mcp_max_job_list_results = 10
         settings.ncoreiq_mcp_server_name = "TestServer"
-        settings.app_version = "0.7.0"
+        settings.app_version = "0.8.0"
+        # Phase 8 dependency settings — must be integers, not MagicMock attributes
+        settings.ncoreiq_mcp_max_dep_results = 200
+        settings.ncoreiq_mcp_dep_max_depth = 3
+        settings.ncoreiq_mcp_dep_max_nodes = 200
+        settings.ncoreiq_mcp_dep_max_edges = 500
+        settings.ncoreiq_mcp_dep_max_candidates = 50
         srv = NCoreIQMCPServer(
             sap_provider=MagicMock(),
             discovery_svc=MagicMock(),
@@ -938,7 +944,13 @@ class TestSettingsIntegration:
         settings.ncoreiq_mcp_max_source_lines = 999999
         settings.ncoreiq_mcp_max_job_list_results = 999999
         settings.ncoreiq_mcp_server_name = "TestServer"
-        settings.app_version = "0.7.0"
+        settings.app_version = "0.8.0"
+        # Phase 8 dependency settings — must be integers, not MagicMock attributes
+        settings.ncoreiq_mcp_max_dep_results = 999999
+        settings.ncoreiq_mcp_dep_max_depth = 999
+        settings.ncoreiq_mcp_dep_max_nodes = 999999
+        settings.ncoreiq_mcp_dep_max_edges = 999999
+        settings.ncoreiq_mcp_dep_max_candidates = 999999
         srv = NCoreIQMCPServer(
             sap_provider=MagicMock(),
             discovery_svc=MagicMock(),
@@ -949,3 +961,8 @@ class TestSettingsIntegration:
         assert srv._max_search <= _HARD_SEARCH
         assert srv._max_source <= _HARD_SOURCE
         assert srv._max_jobs <= _HARD_JOBS
+        assert srv._max_dep_results <= 1000
+        assert srv._dep_max_depth <= 3
+        assert srv._dep_max_nodes <= 200
+        assert srv._dep_max_edges <= 500
+        assert srv._dep_max_candidates <= 50

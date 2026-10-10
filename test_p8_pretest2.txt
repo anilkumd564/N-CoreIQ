@@ -1,0 +1,153 @@
+.........F.............................................................. [ 11%]
+........................................................................ [ 22%]
+........................................................................ [ 34%]
+........................................................................ [ 45%]
+........................................................................ [ 56%]
+........................................................................ [ 68%]
+........................................................................ [ 79%]
+...........................F............................................ [ 91%]
+...............................FF.......................                 [100%]
+================================== FAILURES ===================================
+____________________________ test_health_endpoint _____________________________
+tests\test_health.py:12: in test_health_endpoint
+    assert body["version"] == "0.7.0"
+E   AssertionError: assert '0.8.0' == '0.7.0'
+E     
+E     - 0.7.0
+E     ?   ^
+E     + 0.8.0
+E     ?   ^
+_______________ TestToolRegistration.test_tool_count_is_eleven ________________
+tests\test_phase7.py:212: in test_tool_count_is_eleven
+    assert len(tools) == 11
+E   AssertionError: assert 15 == 11
+E    +  where 15 = len([Tool(name='sap_ping', title=None, description='Test N-CoreIQ \u2192 SAP ECC connectivity. Returns system_id, client, relea... readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=None), meta=None, execution=None), ...])
+__________ TestSettingsIntegration.test_server_uses_settings_limits ___________
+tests\test_phase7.py:923: in test_server_uses_settings_limits
+    srv = NCoreIQMCPServer(
+app\mcp\server.py:59: in __init__
+    self._max_dep_results = min(getattr(settings, "ncoreiq_mcp_max_dep_results", 200), 1000)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: '<' not supported between instances of 'int' and 'MagicMock'
+__ TestSettingsIntegration.test_server_hard_limits_not_exceeded_by_settings ___
+tests\test_phase7.py:942: in test_server_hard_limits_not_exceeded_by_settings
+    srv = NCoreIQMCPServer(
+app\mcp\server.py:59: in __init__
+    self._max_dep_results = min(getattr(settings, "ncoreiq_mcp_max_dep_results", 200), 1000)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: '<' not supported between instances of 'int' and 'MagicMock'
+============================== warnings summary ===============================
+..\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_foundation.py::test_health_endpoint_returns_200
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1216: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:874: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    _restore_event_loop_policy(asyncio.get_event_loop_policy()),
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:772: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    old_loop_policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:777: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:1183: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:889: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:794: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(old_loop_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:942: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:966: DeprecationWarning: 'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    asyncio.set_event_loop_policy(previous_policy)
+
+tests/test_odata_connectivity.py: 27 warnings
+tests/test_phase3_discovery.py: 32 warnings
+tests/test_phase3_packages.py: 51 warnings
+tests/test_phase4_provider.py: 9 warnings
+tests/test_phase4_service_api.py: 22 warnings
+tests/test_phase5.py: 19 warnings
+tests/test_phase7.py: 65 warnings
+tests/test_sap_connectivity.py: 6 warnings
+  C:\Users\042606\AppData\Roaming\Python\Python314\site-packages\pytest_asyncio\plugin.py:978: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    policy = asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_health.py::test_health_endpoint - AssertionError: assert '0...
+FAILED tests/test_phase7.py::TestToolRegistration::test_tool_count_is_eleven
+FAILED tests/test_phase7.py::TestSettingsIntegration::test_server_uses_settings_limits
+FAILED tests/test_phase7.py::TestSettingsIntegration::test_server_hard_limits_not_exceeded_by_settings
+4 failed, 628 passed, 2081 warnings in 37.19s

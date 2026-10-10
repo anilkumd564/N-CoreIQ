@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>N-CoreIQ Launcher</title>
+  <script>
+    // Define globals FIRST — iframes can fire onload before body script runs
+    var BASE = 'http://localhost:8000';
+    var URLS = {
+      ui:   BASE + '/ui/',
+      api:  BASE + '/api/v1/health',
+      docs: BASE + '/docs'
+    };
+    var loaded = { ui: true, api: false, docs: false };
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.getElementById('btn-' + tab).classList.add('active');
+      document.querySelectorAll('.frame-panel').forEach(function(p) { p.classList.remove('active'); });
+      document.getElementById('panel-' + tab).classList.add('active');
+      if (!loaded[tab]) {
+        loaded[tab] = true;
+        document.getElementById('loading-' + tab).classList.remove('hidden');
+        document.getElementById('frame-' + tab).src = URLS[tab];
+      }
+    }
+
+    function hideLoading(tab) {
+      var el = document.getElementById('loading-' + tab);
+      if (el) el.classList.add('hidden');
+    }
+
+    function showError(tab) {
+      var el = document.getElementById('loading-' + tab);
+      if (el) {
+        el.innerHTML =
+          '<div style="font-size:32px;margin-bottom:12px">⚠</div>' +
+          '<div style="font-weight:600;color:#172b4d;margin-bottom:6px">Server not reachable</div>' +
+          '<div style="font-size:12px;max-width:320px;text-align:center">Make sure N-CoreIQ is running on port 8000.<br>Run <strong>start_ncoreiq.bat</strong> to start the server.</div>' +
+          '<button onclick="retryFrame(\'' + tab + '\')" style="margin-top:16px;padding:7px 16px;background:#0052cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px">↻ Retry</button>';
+      }
+    }
+
+    function retryFrame(tab) {
+      loaded[tab] = false;
+      var el = document.getElementById('loading-' + tab);
+      if (el) { el.innerHTML = '<div class="loading-spinner"></div><span>Loading…</span>'; el.classList.remove('hidden'); }
+      switchTab(tab);
+    }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #001f5b;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Top launcher bar ─────────────────────────── */
+    #launcher-bar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: #001f5b;
+      height: 42px;
+      padding: 0 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      flex-shrink: 0;
+    }
+
+    #launcher-brand {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.01em;
+      margin-right: 24px;
+      white-space: nowrap;
+    }
+
+    #launcher-brand span {
+      font-size: 10px;
+      font-weight: 500;
+      color: #0097d1;
+      background: rgba(0,151,209,0.15);
+      border: 1px solid rgba(0,151,209,0.3);
+      border-radius: 3px;
+      padding: 1px 5px;
+      margin-left: 6px;
+      vertical-align: middle;
+      letter-spacing: 0.03em;
+    }
+
+    #tab-nav {
+      display: flex;
+      gap: 0;
+      flex: 1;
+    }
+
+    .tab-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 18px;
+      height: 42px;
+      background: transparent;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: rgba(255,255,255,0.6);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+
+    .tab-btn:hover {
+      color: rgba(255,255,255,0.9);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .tab-btn.active {
+      color: #fff;
+      border-bottom-color: #0097d1;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .tab-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    #launcher-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .action-link {
+      font-size: 11px;
+      color: rgba(255,255,255,0.45);
+      text-decoration: none;
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.15);
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .action-link:hover {
+      color: rgba(255,255,255,0.8);
+      border-color: rgba(255,255,255,0.35);
+    }
+
+    /* ── iFrame panels ────────────────────────────── */
+    #frame-container {
+      flex: 1;
+      position: relative;
+      background: #f4f5f7;
+    }
+
+    .frame-panel {
+      position: absolute;
+      inset: 0;
+      display: none;
+    }
+
+    .frame-panel.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .frame-panel iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+    }
+
+    /* Loading overlay */
+    .frame-loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #f4f5f7;
+      gap: 12px;
+      font-size: 14px;
+      color: #5e6c84;
+      z-index: 10;
+      transition: opacity 0.3s;
+    }
+
+    .frame-loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loading-spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(0,82,204,0.2);
+      border-top-color: #0052cc;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* API frame gets white bg */
+    #panel-api .frame-loading,
+    #panel-docs .frame-loading {
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Launcher bar -->
+  <div id="launcher-bar">
+    <div id="launcher-brand">
+      N-CoreIQ <span>SAP INTELLIGENCE</span>
+    </div>
+
+    <div id="tab-nav">
+      <button class="tab-btn active" onclick="switchTab('ui')" id="btn-ui">
+        <span class="tab-icon">🖥</span> Application
+      </button>
+      <button class="tab-btn" onclick="switchTab('api')" id="btn-api">
+        <span class="tab-icon">⚡</span> API Explorer
+      </button>
+      <button class="tab-btn" onclick="switchTab('docs')" id="btn-docs">
+        <span class="tab-icon">📖</span> API Docs
+      </button>
+    </div>
+
+    <div id="launcher-actions">
+      <a class="action-link" href="http://localhost:8000/ui/" target="_blank" title="Open UI in new tab">↗ UI</a>
+      <a class="action-link" href="http://localhost:8000/api/v1/health" target="_blank" title="Open API in new tab">↗ API</a>
+      <a class="action-link" href="http://localhost:8000/docs" target="_blank" title="Open Docs in new tab">↗ Docs</a>
+    </div>
+  </div>
+
+  <!-- Frame container -->
+  <div id="frame-container">
+
+    <!-- Application UI -->
+    <div class="frame-panel active" id="panel-ui">
+      <div class="frame-loading" id="loading-ui">
+        <div class="loading-spinner"></div>
+        <span>Loading N-CoreIQ Application…</span>
+      </div>
+      <iframe
+        id="frame-ui"
+        src="http://localhost:8000/ui/"
+        title="N-CoreIQ Application"
+        onload="hideLoading('ui')"
+        onerror="showError('ui')"
+      ></iframe>
+    </div>
+
+    <!-- API Explorer -->
+    <div class="frame-panel" id="panel-api">
+      <div class="frame-loading" id="loading-api">
+        <div class="loading-spinner"></div>
+        <span>Loading API Explorer…</span>
+      </div>
+      <iframe
+        id="frame-api"
+        src="about:blank"
+        title="N-CoreIQ API Explorer"
+        onload="hideLoading('api')"
+      ></iframe>
+    </div>
+
+    <!-- API Docs (Swagger UI) -->
+    <div class="frame-panel" id="panel-docs">
+      <div class="frame-loading" id="loading-docs">
+        <div class="loading-spinner"></div>
+        <span>Loading API Documentation…</span>
+      </div>
+      <iframe
+        id="frame-docs"
+        src="about:blank"
+        title="N-CoreIQ API Documentation"
+        onload="hideLoading('docs')"
+      ></iframe>
+    </div>
+
+  </div>
+
+  <script>
+    // Defined early so iframe onload/onerror can call them immediately
+    var BASE = 'http://localhost:8000';
+    var URLS = {
+      ui:   BASE + '/ui/',
+      api:  BASE + '/api/v1/health',
+      docs: BASE + '/docs'
+    };
+
+    var loaded = { ui: true, api: false, docs: false }; // ui pre-loaded via src attr
+
+    function switchTab(tab) {
+      // Update buttons
+      document.querySelectorAll('.tab-btn').forEach(function(b) {
+        b.classList.remove('active');
+      });
+      document.getElementById('btn-' + tab).classList.add('active');
+
+      // Update panels
+      document.querySelectorAll('.frame-panel').forEach(function(p) {
+        p.classList.remove('active');
+      });
+      document.getElementById('panel-' + tab).classList.add('active');
+
+      // Lazy-load iframe on first switch
+      if (!loaded[tab]) {
+        loaded[tab] = true;
+        var frame = document.getElementById('frame-' + tab);
+        var loadDiv = document.getElementById('loading-' + tab);
+        loadDiv.classList.remove('hidden');
+        frame.src = URLS[tab];
+      }
+    }
+
+    function hideLoading(tab) {
+      var loadDiv = document.getElementById('loading-' + tab);
+      if (loadDiv) loadDiv.classList.add('hidden');
+    }
+
+    function showError(tab) {
+      var loadDiv = document.getElementById('loading-' + tab);
+      if (loadDiv) {
+        loadDiv.innerHTML =
+          '<div style="font-size:32px;margin-bottom:12px;">⚠</div>' +
+          '<div style="font-weight:600;color:#172b4d;margin-bottom:6px;">Server not reachable</div>' +
+          '<div style="font-size:12px;max-width:320px;text-align:center;">Make sure N-CoreIQ is running on port 8000.<br>Run <strong>start_ncoreiq.bat</strong> to start the server.</div>' +
+          '<button onclick="retryFrame(\'' + tab + '\')" style="margin-top:16px;padding:7px 16px;background:#0052cc;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">Retry</button>';
+      }
+    }
+
+    function retryFrame(tab) {
+      loaded[tab] = false;
+      var loadDiv = document.getElementById('loading-' + tab);
+      if (loadDiv) {
+        loadDiv.innerHTML =
+          '<div class="loading-spinner"></div>' +
+          '<span>Loading…</span>';
+        loadDiv.classList.remove('hidden');
+      }
+      switchTab(tab);
+    }
+
+    // Mark UI as already loading (src set in HTML)
+    loaded['ui'] = true;
+  </script>
+</body>
+</html>
