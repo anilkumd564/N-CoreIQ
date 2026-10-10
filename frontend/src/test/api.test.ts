@@ -318,6 +318,94 @@ describe("retryJob", () => {
 // Error handling
 // -----------------------------------------------------------------------
 
+// -----------------------------------------------------------------------
+// Phase 8C — exportSourceZip
+// -----------------------------------------------------------------------
+
+describe("exportSourceZip", () => {
+  it("returns buffer and filename on 200", async () => {
+    const buf = new ArrayBuffer(16);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: {
+        get: (name: string) => name === "Content-Disposition"
+          ? 'attachment; filename="N-CoreIQ-Source-20261009_230000.zip"'
+          : null,
+      },
+      arrayBuffer: async () => buf,
+      json: async () => ({}),
+    } as unknown as Response));
+    const { buffer, filename } = await client.exportSourceZip([
+      { object_type: "PROG", object_name: "ZREPORT1" },
+    ]);
+    expect(filename).toBe("N-CoreIQ-Source-20261009_230000.zip");
+    expect(buffer).toBe(buf);
+  });
+
+  it("uppercases object names in request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      arrayBuffer: async () => new ArrayBuffer(0),
+      json: async () => ({}),
+    } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    await client.exportSourceZip([{ object_type: "prog", object_name: "zreport1" }]);
+    const callInit = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+    const body = JSON.parse(callInit.body as string) as { objects: Array<{ object_type: string; object_name: string }> };
+    expect(body.objects[0].object_type).toBe("PROG");
+    expect(body.objects[0].object_name).toBe("ZREPORT1");
+  });
+
+  it("throws ApiError on 503", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      json: async () => ({ detail: "SAP unreachable" }),
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as Response));
+    await expect(
+      client.exportSourceZip([{ object_type: "PROG", object_name: "ZTEST" }])
+    ).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("throws network error on fetch failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    await expect(
+      client.exportSourceZip([{ object_type: "PROG", object_name: "ZTEST" }])
+    ).rejects.toMatchObject({ isNetworkError: true });
+  });
+
+  it("uses fallback filename when Content-Disposition absent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      arrayBuffer: async () => new ArrayBuffer(0),
+      json: async () => ({}),
+    } as unknown as Response));
+    const { filename } = await client.exportSourceZip([
+      { object_type: "PROG", object_name: "ZTEST" },
+    ]);
+    expect(filename).toBe("N-CoreIQ-Source-export.zip");
+  });
+
+  it("throws on abort signal", async () => {
+    const ctrl = new AbortController();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(
+      Object.assign(new DOMException("Aborted", "AbortError"), {})
+    ));
+    ctrl.abort();
+    await expect(
+      client.exportSourceZip([{ object_type: "PROG", object_name: "ZTEST" }], ctrl.signal)
+    ).rejects.toMatchObject({ status: 0, isNetworkError: true });
+  });
+});
+
 describe("isApiError", () => {
   it("identifies ApiError shape", () => {
     const err = { status: 404, detail: "Not found" };

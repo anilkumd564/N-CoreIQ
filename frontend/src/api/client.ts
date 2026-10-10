@@ -332,3 +332,75 @@ export async function getJobResult(jobId: string): Promise<unknown> {
 export function getArtifactUrl(jobId: string): string {
   return `${API_V1}/repository/jobs/${encodeURIComponent(jobId)}/artifact`;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8C — Flat Source Export
+// ---------------------------------------------------------------------------
+
+export interface SourceExportObject {
+  object_type: string;
+  object_name: string;
+}
+
+/**
+ * Fetch the Phase 8C flat source ZIP from the backend.
+ * Returns an ArrayBuffer so the caller can either save via FSA or trigger a
+ * browser download.
+ *
+ * @param objects   List of objects to export.
+ * @param signal    Optional AbortSignal for cancellation.
+ * @returns         { buffer: ArrayBuffer; filename: string }
+ */
+export async function exportSourceZip(
+  objects: SourceExportObject[],
+  signal?: AbortSignal
+): Promise<{ buffer: ArrayBuffer; filename: string }> {
+  const url = `${API_V1}/repository/source-export`;
+  const body = {
+    objects: objects.map((o) => ({
+      object_type: o.object_type.toUpperCase(),
+      object_name: o.object_name.toUpperCase(),
+    })),
+    include_metadata: false,
+    include_source: true,
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/zip",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw { status: 0, detail: "Export cancelled.", isNetworkError: true } as ApiError;
+    }
+    throw {
+      status: 0,
+      detail: "Network error: unable to reach the N-CoreIQ server.",
+      isNetworkError: true,
+    } as ApiError;
+  }
+
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}: ${response.statusText}`;
+    try {
+      const json = await response.json();
+      if (json?.detail) detail = String(json.detail);
+    } catch { /* ignore */ }
+    throw { status: response.status, detail } as ApiError;
+  }
+
+  // Extract filename from Content-Disposition header
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : "N-CoreIQ-Source-export.zip";
+
+  const buffer = await response.arrayBuffer();
+  return { buffer, filename };
+}

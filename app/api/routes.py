@@ -666,6 +666,93 @@ async def bulk_export(
 
 
 # ---------------------------------------------------------------------------
+# Phase 8C — Flat Source Export
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/repository/source-export",
+    summary="Export selected SAP objects as a flat source ZIP (Phase 8C)",
+    tags=["repository", "phase8c"],
+    description=(
+        "Performs bulk extraction (source only) for the specified objects then "
+        "serialises the result into the Phase 8C flat source ZIP format.\n\n"
+        "**ZIP structure:**\n"
+        "```\n"
+        "N-CoreIQ-Source-{timestamp}/\n"
+        "├── manifest.json\n"
+        "├── PROG/\n"
+        "│   ├── ZREPORT1.abap         ← single-component: object name\n"
+        "│   └── ZREPORT2.abap\n"
+        "└── CLAS/\n"
+        "    ├── CLASS_POOL__ZCL_SAMPLE.abap\n"
+        "    └── METHOD__ZCL_SAMPLE_DO_X.abap\n"
+        "```\n\n"
+        "Filename rules:\n"
+        "- Single-component object → `{OBJECTNAME}.abap`\n"
+        "- Multi-component object  → `{COMPONENT_TYPE}__{COMPONENT_NAME}.abap`\n\n"
+        "All path components are sanitised to prevent path traversal.\n\n"
+        "**Status codes:**\n"
+        "- `200` — ZIP produced (may contain per-object errors in manifest).\n"
+        "- `422` — Invalid request.\n"
+        "- `503` — SAP connectivity failure.\n"
+    ),
+    responses={
+        200: {
+            "content": {"application/zip": {}},
+            "description": "Flat source ZIP archive",
+        }
+    },
+)
+async def source_export(
+    request: BulkExportRequest,
+    bulk_service: BulkExtractionService = Depends(get_bulk_extraction_service),
+    export_service: RepositoryExportService = Depends(get_export_service),
+) -> Response:
+    """Extract source for the specified objects and return a flat source ZIP."""
+    # Force source-only for Phase 8C (metadata not needed in the flat format)
+    extraction_req = BulkExtractionRequest(
+        objects=request.objects,
+        search=request.search,
+        include_metadata=False,
+        include_source=True,
+        source_max_lines=request.source_max_lines,
+        continue_on_error=True,
+    )
+
+    try:
+        result = await bulk_service.extract(extraction_req)
+    except ValueError as exc:
+        logger.warning(
+            "source_export_validation_error",
+            extra={"operation": "source_export", "detail": str(exc)},
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SAPAuthenticationError as exc:
+        logger.warning("source_export_auth_failed", extra={"operation": "source_export"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPConnectionError as exc:
+        logger.warning("source_export_unreachable", extra={"operation": "source_export"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SAPCommunicationError as exc:
+        logger.warning("source_export_communication_failed", extra={"operation": "source_export"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    ts = result.started_at.strftime("%Y%m%d_%H%M%S")
+    filename = export_service.source_export_filename(ts)
+    content = export_service.to_source_zip_bytes(result)
+
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Extraction-Id": result.extraction_id,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Phase 4+ — Object detail (stub — kept for backward compat, returns 501)
 # ---------------------------------------------------------------------------
 

@@ -53,6 +53,9 @@ _UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9_.\-]+")
 # Maximum individual path component length (filesystem safety).
 _MAX_NAME_LEN = 64
 
+# Root prefix for Phase 8C flat source archives.
+_SOURCE_ARCHIVE_ROOT_PREFIX = "N-CoreIQ-Source"
+
 # ABAP-like source component types that should get .abap extension.
 _ABAP_COMPONENT_TYPES: frozenset[str] = frozenset(
     {
@@ -94,6 +97,159 @@ class RepositoryExportService:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Phase 8C — Flat Source Export
+    # ------------------------------------------------------------------
+
+    def source_export_filename(self, ts: str) -> str:
+        """Return the ZIP download filename for a Phase 8C source export.
+
+        Format: N-CoreIQ-Source-{YYYYMMDD_HHMMSS}.zip
+        """
+        return f"{_SOURCE_ARCHIVE_ROOT_PREFIX}-{ts}.zip"
+
+    def to_source_zip_bytes(self, result: BulkExtractionResult) -> bytes:
+        """Produce a flat source ZIP archive (Phase 8C format).
+
+        ZIP structure::
+
+            N-CoreIQ-Source-{ts}/
+            ├── manifest.json
+            ├── PROG/
+            │   ├── ZREPORT1.abap         ← single-component: object name
+            │   └── ZREPORT2.abap
+            └── CLAS/
+                ├── CLASS_POOL__ZCL_SAMPLE.abap   ← multi-component
+                └── METHOD__ZCL_SAMPLE_DO_X.abap
+
+        Filename rules:
+          - Single-component object  → {SAFE_OBJECTNAME}.abap
+          - Multi-component object   → {SAFE_CTYPE}__{SAFE_CNAME}.abap
+
+        Security:
+          - All entry paths constructed internally from sanitised components.
+          - Path traversal check applied to every entry.
+          - No credentials, stack traces, or SAP innererror in any entry.
+        """
+        ts = result.started_at.strftime("%Y%m%d_%H%M%S")
+        root = f"{_SOURCE_ARCHIVE_ROOT_PREFIX}-{ts}"
+
+        buf = io.BytesIO()
+        entries: list[tuple[str, bytes]] = []
+        manifest_objects: list[dict] = []
+        hashes: dict[str, str] = {}
+
+        for obj in sorted(result.objects, key=lambda o: (o.object_type, o.object_name)):
+            safe_type = self._safe_component(obj.object_type)
+            safe_name = self._safe_component(obj.object_name)
+
+            entry_info: dict = {
+                "object_type": obj.object_type,
+                "object_name": obj.object_name,
+                "status": obj.status.value,
+                "files": [],
+                "warnings": obj.warnings,
+            }
+
+            if obj.status.value == "FAILED":
+                entry_info["errors"] = [e.model_dump() for e in obj.errors]
+                manifest_objects.append(entry_info)
+                continue
+
+            if obj.source is not None:
+                components = sorted(
+                    obj.source.components,
+                    key=lambda c: (c.component_type, c.component_name),
+                )
+                multi = len(components) > 1
+                for component in components:
+                    if multi:
+                        safe_ctype = self._safe_component(component.component_type)
+                        safe_cname = self._safe_component(component.component_name)
+                        filename = f"{safe_ctype}__{safe_cname}.abap"
+                    else:
+                        filename = f"{safe_name}.abap"
+
+                    entry_path = self._safe_source_zip_path(
+                        root, safe_type, filename
+                    )
+                    # Source text: prefer pre-joined text, else join lines by LineNo
+                    if component.source_text:
+                        text = component.source_text
+                    else:
+                        text = "\n".join(
+                            line.source_line
+                            for line in sorted(component.lines, key=lambda l: l.line_no)
+                        )
+                    entry_bytes = text.encode("utf-8")
+                    entries.append((entry_path, entry_bytes))
+                    hashes[entry_path] = hashlib.sha256(entry_bytes).hexdigest()
+                    entry_info["files"].append(entry_path)
+
+                entry_info["source_truncated"] = obj.source.truncated
+                entry_info["component_count"] = obj.source.component_count
+
+            manifest_objects.append(entry_info)
+
+        manifest: dict[str, Any] = {
+            "schema_version": "8c",
+            "application_name": APP_NAME,
+            "application_version": self._settings.app_version,
+            "extraction_id": result.extraction_id,
+            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+            "system_context": {
+                "system_id": result.system_id,
+                "client": result.client,
+            },
+            "statistics": {
+                "total_requested": result.requested_object_count,
+                "successful": result.successful_object_count,
+                "failed": result.failed_object_count,
+                "truncated": result.truncated_object_count,
+            },
+            "warnings": result.warnings,
+            "objects": manifest_objects,
+            "file_hashes": hashes,
+        }
+
+        manifest_path = f"{root}/manifest.json"
+
+        with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(
+                manifest_path,
+                json.dumps(manifest, ensure_ascii=False, indent=2, default=str),
+            )
+            for entry_path, entry_bytes in entries:
+                zf.writestr(entry_path, entry_bytes)
+
+        buf.seek(0)
+        raw = buf.getvalue()
+
+        logger.info(
+            "source_export_zip_complete",
+            extra={
+                "operation": "source_export",
+                "extraction_id": result.extraction_id,
+                "zip_size_bytes": len(raw),
+                "object_count": len(result.objects),
+            },
+        )
+
+        return raw
+
+    @staticmethod
+    def _safe_source_zip_path(root: str, safe_type: str, filename: str) -> str:
+        """Build and verify a safe ZIP entry path under root/type/filename.
+
+        Raises ValueError on path traversal attempts.
+        """
+        for part in (root, safe_type, filename):
+            if ".." in part or "/" in part or "\\" in part:
+                raise ValueError(
+                    f"Path traversal detected in source export path component: {part!r}"
+                )
+        return f"{root}/{safe_type}/{filename}"
 
     def export_filename(
         self,

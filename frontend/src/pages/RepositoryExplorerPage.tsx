@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { searchRepository, getPackages, createJob } from "../api/client";
+import { searchRepository, getPackages, createJob, exportSourceZip } from "../api/client";
 import type {
   RepositoryObject,
   RepositorySearchResponse,
@@ -46,6 +46,13 @@ export function RepositoryExplorerPage() {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<unknown>(null);
   const [extractSuccess, setExtractSuccess] = useState<string | null>(null);
+
+  // Phase 8C — Export Source state
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<unknown>(null);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const exportAbortRef = useRef<AbortController | null>(null);
 
   // Package tree state
   const [pkgInput, setPkgInput] = useState("");
@@ -135,6 +142,110 @@ export function RepositoryExplorerPage() {
   };
 
   const clearSelection = () => setSelectedRows(new Set());
+
+  // ---------------------------------------------------------------------------
+  // Phase 8C — Export Source (FSA + ZIP fallback)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Write ZIP bytes to a user-chosen local folder via the File System Access API.
+   * Returns true on success, false if the user cancelled the picker.
+   */
+  const writeViaFSA = async (
+    buffer: ArrayBuffer,
+    zipFilename: string
+  ): Promise<boolean> => {
+    // showDirectoryPicker is not universally typed — use a type assertion.
+    const showPicker = (window as unknown as {
+      showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+    }).showDirectoryPicker;
+
+    if (!showPicker) return false; // FSA not available
+
+    let dirHandle: FileSystemDirectoryHandle;
+    try {
+      dirHandle = await showPicker();
+    } catch {
+      // User dismissed the picker
+      return false;
+    }
+
+    // Derive the folder name from the ZIP filename (strip .zip)
+    const folderName = zipFilename.replace(/\.zip$/, "");
+
+    // Parse the ZIP in-memory using a minimal approach:
+    // We'll use the JSZip-like approach but without a dependency — just
+    // write the entire zip as a single file named after the root folder.
+    // The folder structure is preserved inside the zip.
+    // For FSA, we write a single .zip file to the chosen directory.
+    const fileHandle = await dirHandle.getFileHandle(`${folderName}.zip`, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(buffer);
+    await writable.close();
+
+    return true;
+  };
+
+  /**
+   * Trigger a browser download of the ZIP bytes as a fallback when FSA is
+   * not available or the user cancels the picker.
+   */
+  const downloadZip = (buffer: ArrayBuffer, filename: string): void => {
+    const blob = new Blob([buffer], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportSource = async () => {
+    if (selectedRows.size === 0 || !results) return;
+
+    exportAbortRef.current?.abort();
+    exportAbortRef.current = new AbortController();
+
+    setExporting(true);
+    setExportError(null);
+    setExportSuccess(null);
+    setExportProgress(`Fetching source for ${selectedRows.size} object(s)…`);
+
+    const objects = results.objects
+      .filter((o) => selectedRows.has(`${o.sap_object_type}::${o.object_name}`))
+      .map((o) => ({ object_type: o.sap_object_type, object_name: o.object_name }));
+
+    try {
+      const { buffer, filename } = await exportSourceZip(
+        objects,
+        exportAbortRef.current.signal
+      );
+
+      setExportProgress("Saving to disk…");
+
+      // Try FSA first; fall back to browser download
+      const savedViaFSA = await writeViaFSA(buffer, filename);
+      if (!savedViaFSA) {
+        downloadZip(buffer, filename);
+      }
+
+      setExportSuccess(filename);
+      setExportProgress(null);
+    } catch (e) {
+      setExportError(e);
+      setExportProgress(null);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleCancelExport = () => {
+    exportAbortRef.current?.abort();
+    setExporting(false);
+    setExportProgress(null);
+  };
 
   const handleExtract = async () => {
     if (selectedRows.size === 0 || !results) return;
@@ -300,7 +411,7 @@ export function RepositoryExplorerPage() {
             {pkgLoading ? <span className="spinner" /> : "Look Up"}
           </button>
         </div>
-        {pkgError && <ErrorAlert error={pkgError} title="Package lookup failed" />}
+        {pkgError != null && <ErrorAlert error={pkgError} title="Package lookup failed" />}
         {pkgResult && pkgResult.length > 0 && (
           <div style={{ marginTop: "0.75rem" }}>
             <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-secondary)", marginBottom: "0.375rem" }}>
@@ -324,7 +435,7 @@ export function RepositoryExplorerPage() {
       </div>
 
       {/* Results */}
-      {searchError && <ErrorAlert error={searchError} title="Search failed" onRetry={handleSearch} />}
+      {searchError != null && <ErrorAlert error={searchError} title="Search failed" onRetry={handleSearch} />}
 
       {extractSuccess && (
         <div className="alert alert-success" style={{ marginBottom: "0.75rem" }}>
@@ -335,7 +446,34 @@ export function RepositoryExplorerPage() {
           </div>
         </div>
       )}
-      {extractError && <ErrorAlert error={extractError} title="Extraction failed" />}
+      {extractError != null && <ErrorAlert error={extractError} title="Extraction failed" />}
+
+      {/* Phase 8C export feedback */}
+      {exportProgress && (
+        <div className="alert alert-info" style={{ marginBottom: "0.75rem" }}>
+          <span className="alert-icon"><span className="spinner" /></span>
+          <div className="alert-body">
+            {exportProgress}{" "}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleCancelExport}
+              style={{ marginLeft: "0.5rem" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {exportSuccess && (
+        <div className="alert alert-success" style={{ marginBottom: "0.75rem" }}>
+          <span className="alert-icon">✓</span>
+          <div className="alert-body">
+            Source exported:{" "}
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>{exportSuccess}</span>
+          </div>
+        </div>
+      )}
+      {exportError != null && <ErrorAlert error={exportError} title="Export Source failed" />}
 
       {results && (
         <div className="card">
@@ -361,9 +499,17 @@ export function RepositoryExplorerPage() {
             <div className="btn-group">
               {selectedRows.size > 0 && (
                 <>
-                  <span className="selection-count">{selectedRows.size} selected</span>
+              <span className="selection-count">{selectedRows.size} selected</span>
                   <button className="btn btn-secondary btn-sm" onClick={clearSelection}>Clear</button>
-                  <button className="btn btn-primary btn-sm" onClick={handleExtract} disabled={extracting}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleExportSource}
+                    disabled={exporting || extracting}
+                    data-testid="export-source-btn"
+                  >
+                    {exporting ? <><span className="spinner" /> Exporting…</> : "Export Source"}
+                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={handleExtract} disabled={extracting || exporting}>
                     {extracting ? <><span className="spinner" /> Extracting…</> : "Extract Selected"}
                   </button>
                 </>
