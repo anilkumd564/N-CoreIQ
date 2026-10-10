@@ -7,6 +7,21 @@ exports/
 .vscode/
 .idea/
 
+# Node / frontend build artifacts
+node_modules/
+dist/
+
+# Runtime databases
+*.db
+
+# Job artifacts (runtime output)
+job_artifacts/
+
+# Test output text files
+test_*.txt
+frontend_test_*.txt
+frontend_vitest_*.txt
+
 # graphify-axet
 .graphify/
 
@@ -19,3 +34,28 @@ get-pip.py
 pyrfc_meta.json
 pyrfc_pypi.json
 SAP_Repository_Intelligence_Layer_v0.1.zip
+
+# Node
+node_modules/
+
+# Runtime / job artifacts
+job_artifacts/
+*.db
+
+# Test output logs
+test_*.txt
+frontend_test_run.txt
+frontend_vitest_local.txt
+
+# TLS / cert scratch files
+*.pem
+*.der
+*.tar.gz
+cert_*.txt
+chain_*.txt
+debug_*.txt
+tls_*.txt
+diag_*.txt
+extract_*.txt
+win_certs.txt
+uvicorn*.log
