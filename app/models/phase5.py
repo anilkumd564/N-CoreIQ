@@ -173,14 +173,14 @@ class BulkExtractionRequest(BaseModel):
         default=True,
         description="Retrieve source code or technical definition for each object.",
     )
-    source_max_lines: int = Field(
-        default=DEFAULT_MAX_SOURCE_LINES,
+    source_max_lines: int | None = Field(
+        default=None,
         ge=MIN_SOURCE_LINES,
         le=MAX_SOURCE_LINES_HARD_LIMIT,
         description=(
             f"Maximum source lines per object "
             f"({MIN_SOURCE_LINES}–{MAX_SOURCE_LINES_HARD_LIMIT}). "
-            f"Default: {DEFAULT_MAX_SOURCE_LINES}."
+            "Omit (or set to null) for complete source retrieval (default)."
         ),
     )
     continue_on_error: bool = Field(
@@ -302,7 +302,10 @@ class BulkExtractionResult(BaseModel):
     # --- Extraction options used ----------------------------------------
     metadata_enabled: bool = Field(description="Whether metadata extraction was enabled.")
     source_enabled: bool = Field(description="Whether source extraction was enabled.")
-    source_max_lines: int = Field(description="Source max lines setting used.")
+    source_max_lines: int | None = Field(
+        default=None,
+        description="Source max lines setting used. None means complete (unlimited) retrieval.",
+    )
 
     # --- System context (no credentials) --------------------------------
     system_id: str | None = Field(default=None, description="SAP system ID.")

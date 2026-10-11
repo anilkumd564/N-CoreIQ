@@ -1005,7 +1005,7 @@ class ODataSAPConnectionProvider(SapConnectionProvider):
         payload: Any,
         object_type: str,
         object_name: str,
-        max_lines: int,
+        max_lines: int | None,
     ) -> RepositoryObjectSource:
         """Parse a SourceLinesSet OData V2 JSON response into RepositoryObjectSource.
 
@@ -1257,19 +1257,34 @@ class ODataSAPConnectionProvider(SapConnectionProvider):
         self,
         object_type: str,
         object_name: str,
-        max_lines: int = 5000,
+        max_lines: int | None = None,
     ) -> RepositoryObjectSource:
-        """Retrieve source/definition via SourceLinesSet (OData V2)."""
+        """Retrieve source/definition via SourceLinesSet (OData V2).
+
+        When ``max_lines`` is ``None`` the MaxLines filter clause is omitted so
+        the SAP ABAP service returns the complete source without an artificial
+        line cap.  When ``max_lines`` is an integer the clause ``MaxLines eq
+        <n>`` is included, instructing SAP to return at most that many lines.
+
+        OData pagination is followed automatically: if the SAP Gateway returns
+        a ``__next`` link in the response the implementation fetches all
+        subsequent pages and merges the rows before parsing.
+        """
         self._require_configuration()
         odata = self.settings.sap_odata
 
         escaped_type = self._escape_odata_string(object_type)
         escaped_name = self._escape_odata_string(object_name)
-        odata_filter = (
-            f"ObjectType eq '{escaped_type}' "
-            f"and ObjectName eq '{escaped_name}' "
-            f"and MaxLines eq {max_lines}"
-        )
+
+        # Build the OData $filter.  MaxLines is omitted when no limit is
+        # requested so the SAP ABAP implementation returns complete source.
+        filter_parts = [
+            f"ObjectType eq '{escaped_type}'",
+            f"ObjectName eq '{escaped_name}'",
+        ]
+        if max_lines is not None:
+            filter_parts.append(f"MaxLines eq {max_lines}")
+        odata_filter = " and ".join(filter_parts)
 
         url = f"{self._service_root()}/SourceLinesSet"
         params = {
@@ -1290,45 +1305,113 @@ class ODataSAPConnectionProvider(SapConnectionProvider):
             },
         )
 
+        # ------------------------------------------------------------------
+        # Fetch all OData pages.  SAP Gateway may paginate the SourceLinesSet
+        # results; we follow every ``__next`` link until the last page.
+        # The collected raw rows are merged before parsing so that
+        # _parse_object_source receives the complete dataset.
+        # ------------------------------------------------------------------
+        all_results: list[Any] = []
+        next_url: str | None = url
+        next_params: dict | None = params
+        page_index = 0
+
         try:
             async with self._build_client() as http_client:
-                response = await http_client.get(url, params=params)
+                while next_url is not None:
+                    page_index += 1
+                    logger.debug(
+                        "sap_odata_source_fetch_page",
+                        extra={
+                            "operation": "source_extraction",
+                            "object_type": object_type,
+                            "object_name": object_name,
+                            "page": page_index,
+                            "url": next_url,
+                        },
+                    )
+                    try:
+                        response = await http_client.get(next_url, params=next_params)
+                    except httpx.RequestError as exc:
+                        raise self._map_http_exception(exc) from exc
+
+                    status_code = response.status_code
+                    if status_code == 401:
+                        raise SAPAuthenticationError(
+                            "SAP authentication failed during source extraction. "
+                            "Check SAP_ODATA__USER and SAP_ODATA__PASSWORD."
+                        )
+                    if status_code == 403:
+                        raise SAPAuthenticationError(
+                            "SAP user lacks permission to access SourceLinesSet. "
+                            f"Assign the required OData authorisation in SAP ({odata.service})."
+                        )
+                    if status_code == 404:
+                        raise SAPGatewayError(
+                            "SAP OData entity set 'SourceLinesSet' was not found (HTTP 404). "
+                            f"Verify the service '{odata.service}' is activated in /IWFND/MAINT_SERVICE."
+                        )
+                    if status_code >= 500:
+                        raise SAPGatewayError(
+                            "SAP OData service returned an internal server error during source extraction."
+                        )
+                    if status_code != 200:
+                        raise SAPCommunicationError(
+                            f"SAP OData SourceLinesSet returned unexpected HTTP status {status_code}."
+                        )
+
+                    try:
+                        payload = response.json()
+                    except Exception as exc:  # noqa: BLE001
+                        raise SAPResponseParseError(
+                            "SAP OData SourceLinesSet response body is not valid JSON."
+                        ) from exc
+
+                    # Extract rows from this page.
+                    page_d = payload.get("d", {}) if isinstance(payload, dict) else {}
+                    page_results = page_d.get("results", []) if isinstance(page_d, dict) else []
+                    if isinstance(page_results, list):
+                        all_results.extend(page_results)
+                    else:
+                        all_results.extend([])
+
+                    # Check for OData V2 pagination link (__next or @odata.nextLink).
+                    next_link: str | None = None
+                    if isinstance(page_d, dict):
+                        raw_next = page_d.get("__next") or page_d.get("__deferred", {})
+                        if isinstance(raw_next, str) and raw_next.strip():
+                            next_link = raw_next.strip()
+                    if next_link is None and isinstance(payload, dict):
+                        raw_next2 = payload.get("@odata.nextLink") or payload.get("nextLink")
+                        if isinstance(raw_next2, str) and raw_next2.strip():
+                            next_link = raw_next2.strip()
+
+                    if next_link:
+                        logger.info(
+                            "sap_odata_source_following_next_link",
+                            extra={
+                                "operation": "source_extraction",
+                                "object_type": object_type,
+                                "object_name": object_name,
+                                "page": page_index,
+                                "rows_so_far": len(all_results),
+                            },
+                        )
+                        next_url = next_link
+                        next_params = None  # next link already contains query params
+                    else:
+                        next_url = None  # no more pages
+
+        except (SAPAuthenticationError, SAPGatewayError, SAPCommunicationError, SAPResponseParseError):
+            raise
         except httpx.RequestError as exc:
             raise self._map_http_exception(exc) from exc
 
-        status_code = response.status_code
-        if status_code == 401:
-            raise SAPAuthenticationError(
-                "SAP authentication failed during source extraction. "
-                "Check SAP_ODATA__USER and SAP_ODATA__PASSWORD."
-            )
-        if status_code == 403:
-            raise SAPAuthenticationError(
-                "SAP user lacks permission to access SourceLinesSet. "
-                f"Assign the required OData authorisation in SAP ({odata.service})."
-            )
-        if status_code == 404:
-            raise SAPGatewayError(
-                "SAP OData entity set 'SourceLinesSet' was not found (HTTP 404). "
-                f"Verify the service '{odata.service}' is activated in /IWFND/MAINT_SERVICE."
-            )
-        if status_code >= 500:
-            raise SAPGatewayError(
-                "SAP OData service returned an internal server error during source extraction."
-            )
-        if status_code != 200:
-            raise SAPCommunicationError(
-                f"SAP OData SourceLinesSet returned unexpected HTTP status {status_code}."
-            )
+        # Reconstruct a synthetic payload with all collected rows so that the
+        # existing _parse_object_source parser receives the full dataset.
+        merged_payload: dict[str, Any] = {"d": {"results": all_results}}
 
-        try:
-            payload = response.json()
-        except Exception as exc:  # noqa: BLE001
-            raise SAPResponseParseError(
-                "SAP OData SourceLinesSet response body is not valid JSON."
-            ) from exc
-
-        result = self._parse_object_source(payload, object_type, object_name, max_lines)
+        result = self._parse_object_source(merged_payload, object_type, object_name, max_lines)
 
         elapsed = time.monotonic() - start_time
         logger.info(
@@ -1343,6 +1426,7 @@ class ODataSAPConnectionProvider(SapConnectionProvider):
                 "found": result.found,
                 "system_id": result.system_id,
                 "client": result.client,
+                "pages_fetched": page_index,
                 "duration_seconds": round(elapsed, 3),
             },
         )

@@ -194,16 +194,25 @@ export async function getMetadata(
 // Object Source (Phase 4)
 // ---------------------------------------------------------------------------
 
+/**
+ * Retrieve ABAP source or technical definition for one SAP repository object.
+ *
+ * @param objectType  SAP object type (e.g. "PROG", "CLAS").
+ * @param objectName  SAP object name.
+ * @param maxLines    Optional line limit for a bounded preview.
+ *                    **Omit (or pass `undefined`) for complete source retrieval.**
+ *                    Passing a number sends `?max_lines=<n>` to the backend.
+ * @param signal      Optional AbortSignal for cancellation.
+ */
 export async function getSource(
   objectType: string,
   objectName: string,
-  maxLines = 500,
+  maxLines?: number,
   signal?: AbortSignal
 ): Promise<RepositoryObjectSource> {
-  return get<RepositoryObjectSource>(
-    `/repository/objects/${encodeURIComponent(objectType.toUpperCase())}/${encodeURIComponent(objectName.toUpperCase())}/source?max_lines=${maxLines}`,
-    signal
-  );
+  const base = `/repository/objects/${encodeURIComponent(objectType.toUpperCase())}/${encodeURIComponent(objectName.toUpperCase())}/source`;
+  const url = maxLines !== undefined ? `${base}?max_lines=${maxLines}` : base;
+  return get<RepositoryObjectSource>(url, signal);
 }
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,9 @@ frontend/dist/
 
 # Runtime databases
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 
 # Job artifacts (runtime output)
 job_artifacts/

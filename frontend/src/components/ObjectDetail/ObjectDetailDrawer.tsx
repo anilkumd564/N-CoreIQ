@@ -31,7 +31,6 @@ export function ObjectDetailDrawer({ object, initialTab = "summary", onClose }: 
   const [source, setSource] = useState<RepositoryObjectSource | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState<unknown>(null);
-  const [sourceMaxLines, setSourceMaxLines] = useState(500);
   const [selectedComponent, setSelectedComponent] = useState(0);
 
   const [deps, setDeps] = useState<DirectDependencyResult | null>(null);
@@ -63,11 +62,12 @@ export function ObjectDetailDrawer({ object, initialTab = "summary", onClose }: 
     }
   }, [object, metadata, metaLoading]);
 
-  const loadSource = useCallback(async (maxLines = sourceMaxLines) => {
+  const loadSource = useCallback(async () => {
     setSourceLoading(true);
     setSourceError(null);
     try {
-      const s = await getSource(object.sap_object_type, object.object_name, maxLines);
+      // No maxLines argument → complete source retrieval (no truncation)
+      const s = await getSource(object.sap_object_type, object.object_name);
       setSource(s);
       setSelectedComponent(0);
     } catch (e) {
@@ -75,7 +75,7 @@ export function ObjectDetailDrawer({ object, initialTab = "summary", onClose }: 
     } finally {
       setSourceLoading(false);
     }
-  }, [object, sourceMaxLines]);
+  }, [object]);
 
   const loadDeps = useCallback(async () => {
     if (deps || depsLoading) return;
@@ -137,8 +137,24 @@ export function ObjectDetailDrawer({ object, initialTab = "summary", onClose }: 
     if (!source) return;
     const comp = source.components[selectedComponent];
     if (!comp) return;
+    // All returned lines — no truncation
     const text = comp.lines.map((l) => l.source_line).join("\n");
     navigator.clipboard.writeText(text).catch(() => {});
+  };
+
+  const downloadSource = () => {
+    if (!source) return;
+    const comp = source.components[selectedComponent];
+    if (!comp) return;
+    // Download contains every returned source line
+    const text = comp.lines.map((l) => l.source_line).join("\n");
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${comp.component_name || object.object_name}.abap`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -233,28 +249,22 @@ export function ObjectDetailDrawer({ object, initialTab = "summary", onClose }: 
               {!source && !sourceLoading && (
                 <div style={{ marginBottom: "1rem" }}>
                   <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.75rem" }}>
-                    <label style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>Max Lines</label>
-                    <select
-                      className="select"
-                      value={sourceMaxLines}
-                      onChange={(e) => setSourceMaxLines(Number(e.target.value))}
-                      style={{ width: "auto" }}
-                    >
-                      {[500, 1000, 5000].map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                    <button className="btn btn-primary btn-sm" onClick={() => loadSource(sourceMaxLines)}>
+                    <button className="btn btn-primary btn-sm" onClick={() => loadSource()}>
                       Load {isTechDef ? "Technical Definition" : "Source"}
                     </button>
+                    <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
+                      Retrieves complete source — no line limit applied
+                    </span>
                   </div>
                 </div>
               )}
               {sourceLoading && <LoadingSpinner message={`Loading ${isTechDef ? "technical definition" : "source"}…`} />}
-              {sourceError && <ErrorAlert error={sourceError} title="Source load failed" onRetry={() => loadSource(sourceMaxLines)} />}
+              {sourceError && <ErrorAlert error={sourceError} title="Source load failed" onRetry={() => loadSource()} />}
               {source && (
                 <div>
                   <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap" }}>
                     <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>
-                      {source.returned_lines} lines · {source.component_count} component(s)
+                      Lines: {source.returned_lines.toLocaleString()} · {source.component_count} component(s)
                       {source.truncated && <span className="truncated-warning" style={{ display: "inline-flex", marginLeft: "0.5rem" }}>⚠ Truncated</span>}
                     </span>
                     {source.components.length > 1 && (
@@ -265,11 +275,12 @@ export function ObjectDetailDrawer({ object, initialTab = "summary", onClose }: 
                         style={{ width: "auto" }}
                       >
                         {source.components.map((c, i) => (
-                          <option key={i} value={i}>{c.component_name} ({c.line_count} lines)</option>
+                          <option key={i} value={i}>{c.component_name} ({c.line_count?.toLocaleString()} lines)</option>
                         ))}
                       </select>
                     )}
                     <button className="btn btn-ghost btn-sm" onClick={copySource} title="Copy to clipboard">⎘ Copy</button>
+                    <button className="btn btn-ghost btn-sm" onClick={downloadSource} title="Download as .abap file">⬇ Download</button>
                   </div>
                   {source.components[selectedComponent] && (
                     <div className="source-viewer">

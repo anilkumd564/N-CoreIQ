@@ -1,4 +1,4 @@
-"""Phase 7 — N-CoreIQ MCP Server (FastMCP 1.30+).
+de"Phase 7 — N-CoreIQ MCP Server (FastMCP 1.30+).
 
 Architecture: MCP Tool → N-CoreIQ Service → SAP Provider → SAP OData
 All SAP operations are strictly read-only.
@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 MCP_SCHEMA_VERSION = "1"
 _DEFAULT_SEARCH = 100
-_DEFAULT_SOURCE = 500
+_DEFAULT_SOURCE: int | None = None   # None = unlimited (complete source)
 _DEFAULT_JOBS = 20
 _HARD_SEARCH = 1000
-_HARD_SOURCE = 5000
+_HARD_SOURCE = 20_000  # raised to match MAX_SOURCE_LINES_HARD_LIMIT
 _HARD_JOBS = 100
 
 _RO = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
@@ -55,7 +55,9 @@ class NCoreIQMCPServer:
 
         if settings is not None:
             self._max_search = min(getattr(settings, "ncoreiq_mcp_max_search_results", _DEFAULT_SEARCH), _HARD_SEARCH)
-            self._max_source = min(getattr(settings, "ncoreiq_mcp_max_source_lines", _DEFAULT_SOURCE), _HARD_SOURCE)
+            _cfg_source = getattr(settings, "ncoreiq_mcp_max_source_lines", None)
+            # None means no admin-configured limit — complete source retrieval.
+            self._max_source: int | None = min(int(_cfg_source), _HARD_SOURCE) if _cfg_source is not None else None
             self._max_jobs = min(getattr(settings, "ncoreiq_mcp_max_job_list_results", _DEFAULT_JOBS), _HARD_JOBS)
             self._max_dep_results = min(getattr(settings, "ncoreiq_mcp_max_dep_results", 200), 1000)
             self._dep_max_depth = min(getattr(settings, "ncoreiq_mcp_dep_max_depth", 3), 3)
@@ -68,7 +70,7 @@ class NCoreIQMCPServer:
             allowed_hosts = list(getattr(settings, "ncoreiq_mcp_allowed_hosts", []))
         else:
             self._max_search = _DEFAULT_SEARCH
-            self._max_source = _DEFAULT_SOURCE
+            self._max_source = _DEFAULT_SOURCE  # None = unlimited
             self._max_jobs = _DEFAULT_JOBS
             self._max_dep_results = 200
             self._dep_max_depth = 3
@@ -192,14 +194,15 @@ class NCoreIQMCPServer:
         async def get_object_source(
             object_type: Annotated[str, "SAP object type: PROG, CLAS, TABL, FUNC, etc."],
             object_name: Annotated[str, "Exact SAP object name."],
-            max_lines: Annotated[int, f"Max lines 1-{_HARD_SOURCE}. Default {_DEFAULT_SOURCE}."] = _DEFAULT_SOURCE,
+            max_lines: Annotated[Optional[int], f"Max lines 1-{_HARD_SOURCE}. Omit for complete source (default)."] = None,
         ) -> dict:
-            """Get ABAP source or DDIC technical definition. May be truncated. Read-only."""
+            """Get complete ABAP source or DDIC technical definition. Supply max_lines for a bounded preview. Read-only."""
             return await s._get_source(object_type, object_name, max_lines)
         m.add_tool(get_object_source, name="get_object_source",
                    description=(
-                       f"Get source code or technical definition for one SAP object. "
-                       f"Max {_HARD_SOURCE} lines. Truncated results include truncated=true. Read-only."
+                       "Get complete source code or technical definition for one SAP object. "
+                       f"Supply max_lines (1-{_HARD_SOURCE}) for a bounded preview; "
+                       "omit for complete retrieval. Truncated results include truncated=true. Read-only."
                    ), annotations=_RO)
 
         # 6. start_extraction_job
@@ -462,12 +465,22 @@ class NCoreIQMCPServer:
         except Exception as exc:
             raise map_exception(exc, "get_object_metadata") from exc
 
-    async def _get_source(self, object_type: str, object_name: str, max_lines: int) -> dict:
+    async def _get_source(self, object_type: str, object_name: str, max_lines: int | None) -> dict:
         if not (object_type or "").strip():
             raise MCPToolError("INVALID_ARGUMENT", "object_type is required.")
         if not (object_name or "").strip():
             raise MCPToolError("INVALID_ARGUMENT", "object_name is required.")
-        effective = min(int(max_lines), self._max_source)
+
+        # Resolve the effective limit:
+        # - If the caller supplied max_lines, cap first at _HARD_SOURCE (absolute ceiling)
+        #   then further at the admin-configured limit if set.
+        # - If the caller omitted max_lines, use the admin limit (None = unlimited).
+        if max_lines is not None:
+            hard_capped = min(int(max_lines), _HARD_SOURCE)  # hard absolute ceiling
+            effective: int | None = min(hard_capped, self._max_source) if self._max_source is not None else hard_capped
+        else:
+            effective = self._max_source  # None = unlimited, or admin-configured ceiling
+
         try:
             src = await self._object.get_source(
                 object_type=object_type.strip().upper(),
@@ -491,7 +504,7 @@ class NCoreIQMCPServer:
                 "object_name": getattr(src, "object_name", object_name.upper()),
                 "returned_lines": getattr(src, "returned_lines", sum(len(c["lines"]) for c in comps)),
                 "component_count": len(comps), "truncated": trunc,
-                "message": f"Source truncated at {effective} lines." if trunc else None,
+                "message": (f"Source truncated at {effective} lines." if trunc else None),
                 "components": comps,
             }
         except MCPToolError:

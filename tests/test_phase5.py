@@ -225,7 +225,7 @@ class TestBulkExtractionRequestValidation:
         )
         assert req.include_metadata is True
         assert req.include_source is True
-        assert req.source_max_lines == 5000
+        assert req.source_max_lines is None  # default is unlimited (None) — 500-line cap removed
         assert req.continue_on_error is True
 
     def test_source_max_lines_zero_invalid(self):

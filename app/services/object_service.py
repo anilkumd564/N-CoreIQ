@@ -24,7 +24,6 @@ from fastapi import Depends
 
 from app.core.config import Settings, get_settings
 from app.models.phase4 import (
-    DEFAULT_MAX_SOURCE_LINES,
     MAX_SOURCE_LINES_HARD_LIMIT,
     MIN_SOURCE_LINES,
     PHASE4_SUPPORTED_OBJECT_TYPES,
@@ -90,11 +89,14 @@ class RepositoryObjectService:
             )
 
     @staticmethod
-    def _validate_max_lines(max_lines: int) -> None:
+    def _validate_max_lines(max_lines: int | None) -> None:
         """Raise ValueError if max_lines is outside the permitted range.
 
-        Permitted range: MIN_SOURCE_LINES (1) to MAX_SOURCE_LINES_HARD_LIMIT (20000).
+        None means unlimited (complete source) — no validation needed.
+        Permitted range when provided: MIN_SOURCE_LINES (1) to MAX_SOURCE_LINES_HARD_LIMIT (20000).
         """
+        if max_lines is None:
+            return  # unlimited — valid
         if max_lines < MIN_SOURCE_LINES:
             raise ValueError(
                 f"max_lines must be at least {MIN_SOURCE_LINES}. "
@@ -169,7 +171,7 @@ class RepositoryObjectService:
         self,
         object_type: str,
         object_name: str,
-        max_lines: int = DEFAULT_MAX_SOURCE_LINES,
+        max_lines: int | None = None,
     ) -> RepositoryObjectSource:
         """Retrieve source or structured technical definition for one SAP object.
 
@@ -182,7 +184,8 @@ class RepositoryObjectService:
                          trimmed and uppercased.
             object_name: SAP object name (e.g. ``'ZMY_PROGRAM'``).  Will be
                          trimmed and uppercased.
-            max_lines:   Maximum source lines to retrieve (1–20000).  Default: 5000.
+            max_lines:   Maximum source lines to retrieve (1–20000), or ``None``
+                         for complete (unlimited) source retrieval.  Default: None.
 
         Returns:
             RepositoryObjectSource with ordered components and source lines.

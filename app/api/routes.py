@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from app.core.config import Settings, get_settings
@@ -29,7 +29,6 @@ from app.models.results import (
 from app.sap.connection.factory import build_sap_connection_provider
 from app.models.repository import PackageResolutionResult
 from app.models.phase4 import (
-    DEFAULT_MAX_SOURCE_LINES,
     MAX_SOURCE_LINES_HARD_LIMIT,
     MIN_SOURCE_LINES,
     RepositoryObjectMetadata,
@@ -452,12 +451,16 @@ async def get_object_metadata(
         "**Supported object types:** "
         "PROG, CLAS, INTF, FUGR, FUNC, TABL, DTEL, DOMA, VIEW, SHLP, ENQU, TRAN, MSAG\n\n"
         "**Query parameters:**\n"
-        f"- `max_lines` — Maximum source lines to return. "
+        f"- `max_lines` — Maximum source lines to return (optional). "
         f"Range: {MIN_SOURCE_LINES}–{MAX_SOURCE_LINES_HARD_LIMIT}. "
-        f"Default: {DEFAULT_MAX_SOURCE_LINES}.\n\n"
-        "**Example:**\n"
+        f"**Omit for complete (unlimited) source retrieval.**\n\n"
+        "**Example (complete source):**\n"
         "```\n"
-        "GET /api/v1/repository/objects/PROG/ZMY_PROGRAM/source?max_lines=5000\n"
+        "GET /api/v1/repository/objects/PROG/ZMY_PROGRAM/source\n"
+        "```\n\n"
+        "**Example (bounded preview):**\n"
+        "```\n"
+        "GET /api/v1/repository/objects/PROG/ZMY_PROGRAM/source?max_lines=500\n"
         "```\n\n"
         "**Status codes:**\n"
         "- `200` — Object found, source returned.\n"
@@ -469,7 +472,15 @@ async def get_object_metadata(
 async def get_object_source(
     object_type: str,
     object_name: str,
-    max_lines: int = DEFAULT_MAX_SOURCE_LINES,
+    max_lines: int | None = Query(
+        default=None,
+        ge=1,
+        le=MAX_SOURCE_LINES_HARD_LIMIT,
+        description=(
+            f"Maximum source lines to return ({MIN_SOURCE_LINES}–{MAX_SOURCE_LINES_HARD_LIMIT}). "
+            "Omit to retrieve the complete source without truncation."
+        ),
+    ),
     service: RepositoryObjectService = Depends(get_object_service),
 ) -> RepositoryObjectSource:
     try:

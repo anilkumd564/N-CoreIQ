@@ -37,9 +37,10 @@ PHASE4_SUPPORTED_OBJECT_TYPES: frozenset[str] = frozenset(
     }
 )
 
-# Hard maximum for source line extraction.
+# Hard maximum for source line extraction (used only when an explicit limit is requested).
 MAX_SOURCE_LINES_HARD_LIMIT: int = 20_000
-DEFAULT_MAX_SOURCE_LINES: int = 5_000
+# Default is None = unlimited (complete source retrieval).
+DEFAULT_MAX_SOURCE_LINES: int | None = None
 MIN_SOURCE_LINES: int = 1
 
 
@@ -232,8 +233,9 @@ class RepositoryObjectSource(BaseModel):
     client: str | None = Field(default=None)
 
     # --- Extraction parameters ------------------------------------------
-    max_lines: int = Field(
-        description="Maximum lines requested by the caller."
+    max_lines: int | None = Field(
+        default=None,
+        description="Maximum lines requested by the caller. None means complete (unlimited) retrieval.",
     )
     returned_lines: int = Field(
         description="Total number of source lines returned across all components."

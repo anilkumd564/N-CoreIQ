@@ -174,7 +174,7 @@ describe("getMetadata", () => {
 // -----------------------------------------------------------------------
 
 describe("getSource", () => {
-  it("returns source for PROG", async () => {
+  it("returns source for PROG with explicit maxLines", async () => {
     const payload = {
       sap_object_type: "PROG",
       object_name: "ZMY_PROG",
@@ -195,7 +195,7 @@ describe("getSource", () => {
     const payload = {
       sap_object_type: "TABL",
       object_name: "ZFIN_TABLE",
-      max_lines: 500,
+      max_lines: null,
       returned_lines: 5,
       component_count: 1,
       found: true,
@@ -203,8 +203,102 @@ describe("getSource", () => {
       components: [{ component_type: "TABLE_DEF", component_name: "ZFIN_TABLE", line_count: 5, lines: [] }],
     };
     vi.stubGlobal("fetch", mockFetch(200, payload));
-    const result = await client.getSource("TABL", "ZFIN_TABLE", 500);
+    const result = await client.getSource("TABL", "ZFIN_TABLE");
     expect(result.sap_object_type).toBe("TABL");
+  });
+
+  it("does NOT send max_lines when called without maxLines (complete retrieval)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        sap_object_type: "PROG",
+        object_name: "ZMY_PROG",
+        max_lines: null,
+        returned_lines: 1250,
+        component_count: 1,
+        found: true,
+        truncated: false,
+        components: [],
+      }),
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await client.getSource("PROG", "ZMY_PROG");
+    const calledUrl = (fetchMock.mock.calls[0] as [string, RequestInit])[0];
+    expect(calledUrl).not.toContain("max_lines");
+    expect(result.returned_lines).toBe(1250);
+  });
+
+  it("sends max_lines=500 when explicitly requested", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        sap_object_type: "PROG",
+        object_name: "ZMY_PROG",
+        max_lines: 500,
+        returned_lines: 500,
+        component_count: 1,
+        found: true,
+        truncated: true,
+        components: [],
+      }),
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    await client.getSource("PROG", "ZMY_PROG", 500);
+    const calledUrl = (fetchMock.mock.calls[0] as [string, RequestInit])[0];
+    expect(calledUrl).toContain("max_lines=500");
+  });
+
+  it("returns 1250 lines when complete source requested (no maxLines)", async () => {
+    const lines = Array.from({ length: 1250 }, (_, i) => ({
+      line_no: i + 1,
+      source_line: `* line ${i + 1}`,
+      component_type: "PROGRAM",
+      component_name: "ZMY_PROG",
+    }));
+    const payload = {
+      sap_object_type: "PROG",
+      object_name: "ZMY_PROG",
+      max_lines: null,
+      returned_lines: 1250,
+      component_count: 1,
+      found: true,
+      truncated: false,
+      components: [{ component_type: "PROGRAM", component_name: "ZMY_PROG", line_count: 1250, lines }],
+    };
+    vi.stubGlobal("fetch", mockFetch(200, payload));
+    const result = await client.getSource("PROG", "ZMY_PROG");
+    expect(result.returned_lines).toBe(1250);
+    expect(result.truncated).toBe(false);
+    expect(result.components[0].lines).toHaveLength(1250);
+  });
+
+  it("download uses all returned lines (not truncated)", async () => {
+    // Verify that source components contain all lines available for download
+    const lines = Array.from({ length: 3842 }, (_, i) => ({
+      line_no: i + 1,
+      source_line: `* line ${i + 1}`,
+      component_type: "PROGRAM",
+      component_name: "ZBIG_PROG",
+    }));
+    const payload = {
+      sap_object_type: "PROG",
+      object_name: "ZBIG_PROG",
+      max_lines: null,
+      returned_lines: 3842,
+      component_count: 1,
+      found: true,
+      truncated: false,
+      components: [{ component_type: "PROGRAM", component_name: "ZBIG_PROG", line_count: 3842, lines }],
+    };
+    vi.stubGlobal("fetch", mockFetch(200, payload));
+    const result = await client.getSource("PROG", "ZBIG_PROG");
+    // All lines available for download
+    const downloadText = result.components[0].lines.map((l) => l.source_line).join("\n");
+    expect(downloadText.split("\n")).toHaveLength(3842);
   });
 });
 
