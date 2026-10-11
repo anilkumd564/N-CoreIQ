@@ -72,10 +72,38 @@ modules:
       ## For production, configure object store via BTP Object Store service
       NCOREIQ_JOB_ARTIFACT_DIR: /tmp/ncoreiq_artifacts
       NCOREIQ_JOB_DB_PATH: /tmp/ncoreiq_jobs.db
+    
+    provides:
+      - name: ncoreiq-backend-api
+        properties:
+          url: https://ncoreiq.${default-domain}
+
     requires:
       - name: ncoreiq-xsuaa
       - name: ncoreiq-destination
       - name: ncoreiq-connectivity
+
+  ## -----------------------------------------------------------------------
+  ## N-CoreIQ Application Router — authenticated browser entry point
+  ## -----------------------------------------------------------------------
+  - name: ncoreiq-approuter
+    type: approuter.nodejs
+    path: ../../approuter
+    parameters:
+      memory: 256M
+      disk-quota: 512M
+      routes:
+        - route: ncoreiq-ui.${default-domain}
+    build-parameters:
+      builder: npm
+    requires:
+      - name: ncoreiq-xsuaa
+      - name: ncoreiq-backend-api
+        group: destinations
+        properties:
+          name: ncoreiq-backend
+          url: ~{url}
+          forwardAuthToken: true
 
 ## -----------------------------------------------------------------------
 ## BTP Service Resources
@@ -95,14 +123,14 @@ resources:
 
   ## Destination Service
   - name: ncoreiq-destination
-    type: org.cloudfoundry.managed-service
+    type: org.cloudfoundry.existing-service
     parameters:
-      service: destination
-      service-plan: lite
+      service-name: ecc-mcp-destination
+
 
   ## Connectivity Service (required for Cloud Connector / on-premise ECC)
   - name: ncoreiq-connectivity
-    type: org.cloudfoundry.managed-service
+    type: org.cloudfoundry.existing-service
     parameters:
-      service: connectivity
-      service-plan: lite
+      service-name: ecc-mcp-connectivity
+

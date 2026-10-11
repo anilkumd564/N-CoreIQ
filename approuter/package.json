@@ -1,0 +1,12 @@
+{
+  "name": "ncoreiq-approuter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "N-CoreIQ SAP BTP Application Router",
+  "scripts": {
+    "start": "node node_modules/@sap/approuter/approuter.js"
+  },
+  "dependencies": {
+    "@sap/approuter": "23.3.0"
+  }
+}

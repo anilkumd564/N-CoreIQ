@@ -196,22 +196,41 @@ async def readiness(
     if artifact_status.status == "unavailable":
         all_ready = False
 
-    # Check mandatory configuration (BTP mode)
+    # Check mandatory BTP service bindings
     if settings.app_env == "btp":
-        if not settings.sap_odata.base_url and not (
-            settings.btp.destination.uri or settings.btp.xsuaa.url
-        ):
+        from app.btp.bindings import BTPServiceBindingResolver
+        
+        binding_resolver = BTPServiceBindingResolver()
+
+        destination_binding = binding_resolver.get_destination()
+        connectivity_binding = binding_resolver.get_connectivity()
+        xsuaa_binding = binding_resolver.get_xsuaa()
+
+        if not settings.sap_odata.base_url and not destination_binding:
             services.append(
                 ServiceHealthStatus(
                     name="btp_configuration",
                     status="unavailable",
                     message="BTP mode requires Destination Service binding.",
+                    details={
+                        "destination_service_bound": False,
+                        "connectivity_service_bound": connectivity_binding is not None,
+                        "xsuaa_service_bound": xsuaa_binding is not None,
+                    },
                 )
             )
             all_ready = False
         else:
             services.append(
-                ServiceHealthStatus(name="btp_configuration", status="ok")
+                ServiceHealthStatus(
+                    name="btp_configuration",
+                    status="ok",
+                    details={
+                        "destination_service_bound": destination_binding is not None,
+                        "connectivity_service_bound": connectivity_binding is not None,
+                        "xsuaa_service_bound": xsuaa_binding is not None,
+                    },
+                )
             )
 
     result = ReadinessResult(

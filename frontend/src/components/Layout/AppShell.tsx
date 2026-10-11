@@ -14,15 +14,30 @@ export function AppShell() {
 
   const refreshStatus = useCallback(async () => {
     setPingState("checking");
-    try {
-      const [p, h] = await Promise.all([getSapPing(), getHealth()]);
-      setPing(p);
-      setHealth(h);
-      setPingState(p.status === "connected" ? "connected" : "disconnected");
-    } catch {
+
+    const [pingResult, healthResult] = await Promise.allSettled([
+      getSapPing(),
+      getHealth(),
+    ]);
+
+    if (healthResult.status === "fulfilled") {
+      setHealth(healthResult.value);
+    } else {
+      setHealth(null);
+    }
+
+    if (pingResult.status === "fulfilled") {
+      setPing(pingResult.value);
+      setPingState(
+        pingResult.value.status === "connected"
+          ? "connected"
+          : "disconnected"
+      );
+    } else {
+      setPing(null);
       setPingState("disconnected");
     }
-  }, []);
+  }, []);  
 
   useEffect(() => {
     refreshStatus();
@@ -33,7 +48,7 @@ export function AppShell() {
   const sysId = ping?.system_id ?? "—";
   const client = ping?.client ?? "—";
   const env = health?.environment ?? "";
-  const version = health?.version ?? "0.8.5";
+  const version = health?.version ?? "—";
 
   return (
     <div className="app-shell">

@@ -1,0 +1,27 @@
+{
+  "authenticationMethod": "route",
+  "sessionTimeout": 30,
+  "routes": [
+    {
+      "source": "^/health/(.*)$",
+      "target": "/health/$1",
+      "destination": "ncoreiq-backend",
+      "authenticationType": "none",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/api/(.*)$",
+      "target": "/api/$1",
+      "destination": "ncoreiq-backend",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/(.*)$",
+      "target": "/$1",
+      "destination": "ncoreiq-backend",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    }
+  ]
+}

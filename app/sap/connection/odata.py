@@ -178,11 +178,37 @@ class ODataSAPConnectionProvider(SapConnectionProvider):
             username=odata.user or "",
             password=odata.password or "",
         )
+
+        # BTP Connectivity Service proxy configuration.
+        # These values are injected by BtpSapConnectionProvider when the
+        # resolved SAP destination has ProxyType=OnPremise.
+        proxy_host = getattr(self, "_btp_proxy_host", None)
+        proxy_port = getattr(self, "_btp_proxy_port", None)
+        proxy_token = getattr(self, "_btp_proxy_token", None)
+        location_id = getattr(self, "_btp_location_id", None)
+
+        proxy = None
+
+        if proxy_host and proxy_port:
+            proxy_headers = {}
+
+            if proxy_token:
+                proxy_headers["Proxy-Authorization"] = f"Bearer {proxy_token}"
+
+            if location_id:
+                proxy_headers["SAP-Connectivity-SCC-Location_ID"] = str(location_id)
+
+            proxy = httpx.Proxy(
+                url=f"http://{proxy_host}:{proxy_port}",
+                headers=proxy_headers,
+            )
+
         return httpx.AsyncClient(
             auth=auth,
             verify=self._tls_verify(),
             timeout=float(odata.timeout),
             headers={"Accept": "application/json"},
+            proxy=proxy,
         )
 
     @staticmethod

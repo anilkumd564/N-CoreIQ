@@ -48,6 +48,7 @@ from app.auth.principal import (
     SCOPE_VIEWER,
     AuthenticatedPrincipal,
 )
+from app.btp.bindings import BTPServiceBindingResolver
 from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -232,7 +233,7 @@ async def _fetch_jwks(jwks_uri: str) -> dict[str, Any]:
 def _validate_jwt_without_library(
     token: str,
     jwks: dict[str, Any],
-    audience: str | None,
+    audience: str | list[str] | None,
     issuer: str | None,
 ) -> dict[str, Any]:
     """Validate JWT using PyJWT if available, otherwise do basic claims check.
@@ -357,16 +358,48 @@ class XSUAAAuthMiddleware(BaseHTTPMiddleware):
             )
 
         try:
-            # Determine JWKS URI
+            # Resolve XSUAA runtime metadata.
+            # Explicit Settings values take precedence; Cloud Foundry
+            # VCAP_SERVICES is used as the production fallback.
+            xsuaa_binding = BTPServiceBindingResolver().get_xsuaa()
+
+            bound_xsuaa_url = None
+            bound_xsappname = None
+            bound_clientid = None
+
+            if xsuaa_binding:
+                bound_xsuaa_url = (
+                    xsuaa_binding.get("url")
+                    or xsuaa_binding.get("uri")
+                )
+                bound_xsappname = xsuaa_binding.get("xsappname")
+                bound_clientid = xsuaa_binding.get("clientid")
+
+            xsuaa_url = (
+                self._settings.btp.xsuaa.url
+                or bound_xsuaa_url
+            )
+
+            xsappname = (
+                self._settings.btp.xsuaa.xsappname
+                or bound_xsappname
+            )
+
+            # Explicit AUTH__JWKS_URI remains the highest-priority override.
             jwks_uri = auth_settings.jwks_uri
             if not jwks_uri:
-                xsuaa_url = self._settings.btp.xsuaa.url
                 if xsuaa_url:
-                    jwks_uri = xsuaa_url.rstrip("/") + "/token_keys"
+                    jwks_uri = str(xsuaa_url).rstrip("/") + "/token_keys"
                 else:
                     raise ValueError(
-                        "JWKS URI not configured. Set AUTH__JWKS_URI or BTP__XSUAA__URL."
+                        "JWKS URI not configured and no XSUAA service binding was found."
                     )
+
+            # Explicit AUTH__ISSUER remains the highest-priority override.
+            # Otherwise derive the standard XSUAA issuer from the service binding.
+            issuer = auth_settings.issuer
+            if not issuer and xsuaa_url:
+                issuer = str(xsuaa_url).rstrip("/") + "/oauth/token"
 
             # Check cache
             jwks = _jwks_cache.get()
@@ -374,13 +407,22 @@ class XSUAAAuthMiddleware(BaseHTTPMiddleware):
                 jwks = await _fetch_jwks(jwks_uri)
                 _jwks_cache.set(jwks)
 
-            # Validate token
-            xsappname = self._settings.btp.xsuaa.xsappname
+            # service client ID in the aud claim.
+            if auth_settings.audience:
+                jwt_audience: str | list[str] | None = auth_settings.audience
+            else:
+                accepted_audiences = [
+                    str(value)
+                    for value in (xsappname, bound_clientid)
+                    if value
+                ]
+                jwt_audience = list(dict.fromkeys(accepted_audiences)) or None
+
             claims = _validate_jwt_without_library(
                 token,
                 jwks,
-                audience=auth_settings.audience or xsappname,
-                issuer=auth_settings.issuer,
+                audience=jwt_audience,
+                issuer=issuer,
             )
 
             principal = _build_principal_from_claims(claims, xsappname)
