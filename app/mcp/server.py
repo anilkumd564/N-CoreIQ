@@ -1,4 +1,4 @@
-de"Phase 7 — N-CoreIQ MCP Server (FastMCP 1.30+).
+"""Phase 7 — N-CoreIQ MCP Server (FastMCP 1.30+).
 
 Architecture: MCP Tool → N-CoreIQ Service → SAP Provider → SAP OData
 All SAP operations are strictly read-only.
@@ -213,7 +213,7 @@ class NCoreIQMCPServer:
             object_types: Annotated[Optional[list[str]], "Search-based: type filter."] = None,
             include_metadata: Annotated[bool, "Extract metadata."] = True,
             include_source: Annotated[bool, "Extract source."] = True,
-            source_max_lines: Annotated[int, "Max source lines per object."] = 5000,
+            source_max_lines: Annotated[Optional[int], f"Max source lines per object (1-{_HARD_SOURCE}). Omit for complete (unlimited) source retrieval."] = None,
             continue_on_error: Annotated[bool, "Continue when objects fail."] = True,
             export_format: Annotated[str, "Export: none, json, or zip."] = "none",
         ) -> dict:

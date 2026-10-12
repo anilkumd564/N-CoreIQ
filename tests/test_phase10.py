@@ -647,7 +647,12 @@ class TestInputLimits:
 
     def test_mcp_max_source_lines_within_bounds(self):
         s = Settings()
-        assert 1 <= s.ncoreiq_mcp_max_source_lines <= 5000
+        # None means unlimited (complete source) — valid default after removing 500-line cap.
+        # When set to an integer it must be within 1-20000 (MAX_SOURCE_LINES_HARD_LIMIT).
+        if s.ncoreiq_mcp_max_source_lines is None:
+            pass  # None = unlimited, always valid
+        else:
+            assert 1 <= s.ncoreiq_mcp_max_source_lines <= 20_000
 
     def test_mcp_dep_max_depth_within_bounds(self):
         s = Settings()

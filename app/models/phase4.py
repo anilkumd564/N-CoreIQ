@@ -11,6 +11,8 @@ uppercase, strip indentation, or collapse whitespace on source lines.
 
 from __future__ import annotations
 
+import hashlib
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -263,3 +265,33 @@ class RepositoryObjectSource(BaseModel):
         default_factory=list,
         description="Ordered list of source components.",
     )
+
+    # --- Evidence provenance hash ---------------------------------------
+    sha256: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 hex digest of the complete source text. "
+            "Computed by joining all component source lines with newlines in component order. "
+            "Suitable for immutable evidence snapshot identification. "
+            "None when source is empty or not yet computed."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _compute_sha256(self) -> "RepositoryObjectSource":
+        """Compute SHA-256 from all source lines when components are present."""
+        if self.components and self.sha256 is None:
+            # Concatenate all source lines across all components in order.
+            # Use newline as line separator — deterministic and stable.
+            all_lines: list[str] = []
+            for comp in self.components:
+                for line in comp.lines:
+                    all_lines.append(line.source_line)
+            if all_lines:
+                combined = "\n".join(all_lines)
+                object.__setattr__(
+                    self,
+                    "sha256",
+                    hashlib.sha256(combined.encode("utf-8")).hexdigest(),
+                )
+        return self

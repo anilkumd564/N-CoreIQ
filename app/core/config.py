@@ -325,7 +325,10 @@ class Settings(BaseSettings):
     # Transport: "stdio" (local/IDE) or "streamable_http" (BTP/remote).
     # Validated — any other value raises a clear startup error.
     ncoreiq_mcp_transport: str = Field(default="stdio")
-    ncoreiq_mcp_max_source_lines: int = Field(default=500, ge=1, le=5000)
+    # None = no admin-imposed ceiling; each tool call uses its own limit or unlimited.
+    # Set to a positive integer to impose an admin ceiling on source lines returned
+    # by the MCP get_object_source tool (e.g. NCOREIQ_MCP_MAX_SOURCE_LINES=5000).
+    ncoreiq_mcp_max_source_lines: int | None = Field(default=None)
     ncoreiq_mcp_max_search_results: int = Field(default=100, ge=1, le=1000)
     ncoreiq_mcp_max_job_list_results: int = Field(default=20, ge=1, le=100)
     ncoreiq_mcp_tool_timeout_seconds: int = Field(default=120, ge=10)
