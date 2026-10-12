@@ -28,6 +28,13 @@ version: 1.0.0
 parameters:
   enable-parallel-deployments: true
   keep-existing-routes: true
+  ## ── Cross-application identity parameters ────────────────────────────────
+  ## Foreign N-CoreShift xsappname — resolved at deployment time.
+  ## Default assumes same-org/same-space co-deployment (same as ncoreshift mta.yaml).
+  ## Override for cross-space deployments:
+  ##   mbt build --set-param ncoreshift-xsappname=<effective-ncoreshift-xsappname>
+  ## or: cf deploy ... --parameter ncoreshift-xsappname=<value>
+  ncoreshift-xsappname: ncoreshift-${org}-${space}
 
 modules:
   ## -----------------------------------------------------------------------
@@ -120,6 +127,25 @@ resources:
       config:
         xsappname: ncoreiq-${org}-${space}
         tenant-mode: dedicated
+        ## Cross-application scope grants — deployment-time substitution.
+        ## MTA replaces the top-level "scopes" key; the xs-security.json scopes
+        ## (without grant-as-authority-to-apps) are superseded by this array.
+        ## ${ncoreshift-xsappname} resolves to the effective N-CoreShift xsappname
+        ## (default: ncoreshift-${org}-${space}; overridable for cross-space).
+        ## Operator and Admin do NOT grant authority to N-CoreShift (least privilege).
+        scopes:
+          - name: "$XSAPPNAME.NCoreIQ.Viewer"
+            description: "Read-only access: SAP connectivity status, package browsing, repository search, metadata, source, dependencies"
+            grant-as-authority-to-apps:
+              - "${ncoreshift-xsappname}"
+          - name: "$XSAPPNAME.NCoreIQ.Analyst"
+            description: "Analyst access: all Viewer capabilities plus dependency traversal, reverse analysis, impact analysis, source export, job management"
+            grant-as-authority-to-apps:
+              - "${ncoreshift-xsappname}"
+          - name: "$XSAPPNAME.NCoreIQ.Operator"
+            description: "Operator access: all Analyst capabilities plus job management, artifact operations, job cancellation and retry"
+          - name: "$XSAPPNAME.NCoreIQ.Admin"
+            description: "Admin access: all Operator capabilities plus diagnostics, configuration visibility, administrative operations"
 
   ## Destination Service
   - name: ncoreiq-destination
@@ -133,4 +159,3 @@ resources:
     type: org.cloudfoundry.existing-service
     parameters:
       service-name: ecc-mcp-connectivity
-
