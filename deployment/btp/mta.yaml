@@ -56,6 +56,41 @@ modules:
     build-parameters:
       build-artifact-name: ncoreiq-backend
       requires-runtime: true
+      ## ── Packaging exclusions ─────────────────────────────────────────────
+      ## Patterns are relative to the module path (path: ../.. = project root).
+      ## Excludes local-development artifacts, source-control metadata,
+      ## knowledge-graph cache, local runtime databases, logs, test output,
+      ## and non-backend project directories that are not required by the
+      ## FastAPI Python runtime (uvicorn app.main:app).
+      ## Runtime-required items intentionally NOT excluded:
+      ##   app/  requirements.txt  Procfile  runtime.txt
+      ignore:
+        - ".git/"
+        - ".graphify/"
+        - ".venv/"
+        - "__pycache__/"
+        - ".pytest_cache/"
+        - "coverage/"
+        - "*.db"
+        - "*.db-shm"
+        - "*.db-wal"
+        - "*.log"
+        - "test_*.txt"
+        - "*_test_out.txt"
+        - "tests/"
+        - "docs/"
+        - "frontend/"
+        - "approuter/"
+        - "deployment/"
+        - "scripts/"
+        - "job_artifacts/"
+        - "node_modules/"
+        - "mta_archives/"
+        - "*.mtar"
+        - "*.vsix"
+        - ".vscode/"
+        - ".idea/"
+        - "*.pyc"
     properties:
       APP_ENV: btp
       SAP_CONNECTION_MODE: btp
