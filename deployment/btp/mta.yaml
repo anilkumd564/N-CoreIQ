@@ -90,6 +90,21 @@ modules:
         - ".vscode/"
         - ".idea/"
         - "*.pyc"
+        ## ── TLS / Certificate diagnostic artifacts ────────────────────────
+        ## Root-level TLS inspection and debug files generated during
+        ## BAS-based TLS diagnostics. DIAGNOSTIC ONLY — not runtime-required.
+        ## Confirmed untracked/diagnostic via Gate B Step 4A review (2026-10-13).
+        - "sap_ca.pem"
+        - "sap_leaf.pem"
+        - "sap_leaf_from_socket.pem"
+        - "sap_leaf_cert.der"
+        - "cert_analysis.txt"
+        - "debug_tls_out.txt"
+        - "diag_*.txt"
+        - "tls_diag_result.txt"
+        - "cert_info.txt"
+        - "cert_info_result.txt"
+        - "win_certs.txt"
     properties:
       APP_ENV: btp
       SAP_CONNECTION_MODE: btp
