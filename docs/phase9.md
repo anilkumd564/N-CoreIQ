@@ -95,7 +95,10 @@ BTP__CLOUD_CONNECTOR_LOCATION_ID=     # optional
 ```
 AUTH__MODE=xsuaa                       # disabled | xsuaa
 AUTH__JWKS_URI=                        # auto-derived from BTP__XSUAA__URL
-AUTH__AUDIENCE=<xsappname>             # optional, auto-derived
+# AUTH__AUDIENCE is optional and auto-derived from the bound XSUAA identity.
+# Do NOT set this to a manually constructed tenant-qualified value (!t...).
+# N-CoreIQ automatically derives: <bound-xsappname> and <bound-xsappname>.NCoreIQ
+# AUTH__AUDIENCE=                    # leave unset for normal production deployments
 AUTH__ISSUER=                          # optional XSUAA issuer
 AUTH__CORS_ORIGINS=["https://ncoreiq.cfapps.eu10.hana.ondemand.com"]
 ```

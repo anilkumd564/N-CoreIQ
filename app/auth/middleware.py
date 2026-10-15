@@ -92,6 +92,16 @@ _AUTH_EXEMPT_PATHS = frozenset(
     }
 )
 
+# Source-defined NCoreIQ scope sub-namespace.
+# All scopes in deployment/btp/xs-security.json are declared under the
+# $XSAPPNAME.NCoreIQ.* pattern. XSUAA adds <xsappname>.<namespace> as a
+# distinct audience entry in client_credentials tokens that carry any
+# NCoreIQ.* scope. This constant is the authoritative, source-proven
+# namespace component — it must stay aligned with xs-security.json scope
+# name definitions.
+_NCOREIQ_SCOPE_NAMESPACE: str = "NCoreIQ"
+
+
 # Map XSUAA scope suffixes to NCoreIQ scope names
 # XSUAA delivers scopes as "<xsappname>.<scope>" or just "<scope>"
 _SCOPE_MAP = {
@@ -109,6 +119,44 @@ _SCOPE_MAP = {
     "Operator": SCOPE_OPERATOR,
     "Admin": SCOPE_ADMIN,
 }
+
+
+def _build_accepted_audiences(
+    xsappname: str | None,
+    bound_clientid: str | None,
+) -> list[str]:
+    """Build the accepted JWT audience list from the bound XSUAA identity.
+
+    All values are derived strictly from trusted XSUAA runtime binding
+    metadata (VCAP_SERVICES). No tenant qualifier (!t...) is ever manually
+    constructed or hard-coded.
+
+    Includes, in order:
+    1. The bound xsappname as-is from VCAP_SERVICES (may be tenant-qualified,
+       e.g. ``ncoreiq-org-space!t12345``).
+    2. The NCoreIQ scope-namespace audience: ``<xsappname>.<namespace>``.
+       XSUAA emits exactly this audience entry in client_credentials tokens
+       that carry NCoreIQ.* scopes. It is derived by appending the
+       source-defined ``_NCOREIQ_SCOPE_NAMESPACE`` constant — no suffix is
+       invented at runtime.
+    3. The bound clientid (existing behaviour, preserved for compatibility).
+
+    Security properties:
+    - Exact-string membership semantics are preserved (no substring matching).
+    - Only values derived from the trusted XSUAA binding are accepted.
+    - A token for a different application is rejected because its xsappname
+      will differ from the bound value.
+    - A token for the same application in a different tenant is rejected
+      because the !t qualifier in the VCAP_SERVICES xsappname will differ.
+    """
+    candidates: list[str] = []
+    if xsappname:
+        candidates.append(xsappname)
+        candidates.append(f"{xsappname}.{_NCOREIQ_SCOPE_NAMESPACE}")
+    if bound_clientid:
+        candidates.append(bound_clientid)
+    # Stable, de-duplicated order
+    return list(dict.fromkeys(candidates))
 
 
 class JWKSCache:
@@ -311,6 +359,25 @@ def _validate_jwt_without_library(
         if exp and time.time() > exp:
             raise ValueError("JWT has expired")
 
+        # Check audience membership (mirrors PyJWT verify_aud semantics)
+        if audience:
+            token_aud = claims.get("aud")
+            if token_aud is None:
+                raise ValueError(
+                    "JWT has no 'aud' claim but audience validation is configured"
+                )
+            token_aud_set: set[str] = (
+                {token_aud} if isinstance(token_aud, str) else set(token_aud)
+            )
+            accepted_set: set[str] = (
+                {audience} if isinstance(audience, str) else set(audience)
+            )
+            if not token_aud_set.intersection(accepted_set):
+                raise ValueError(
+                    "JWT audience validation failed: token aud does not contain "
+                    "any of the configured accepted audience values"
+                )
+
         return claims  # type: ignore[no-any-return]
 
 
@@ -407,16 +474,16 @@ class XSUAAAuthMiddleware(BaseHTTPMiddleware):
                 jwks = await _fetch_jwks(jwks_uri)
                 _jwks_cache.set(jwks)
 
-            # service client ID in the aud claim.
+            # Determine the accepted JWT audience(s).
+            # If AUTH__AUDIENCE is explicitly configured, use it as a strict
+            # override (backward-compatible, exact-match semantics preserved).
+            # Otherwise derive the accepted set dynamically from the trusted
+            # XSUAA binding — no !t suffix is ever manually constructed.
             if auth_settings.audience:
                 jwt_audience: str | list[str] | None = auth_settings.audience
             else:
-                accepted_audiences = [
-                    str(value)
-                    for value in (xsappname, bound_clientid)
-                    if value
-                ]
-                jwt_audience = list(dict.fromkeys(accepted_audiences)) or None
+                accepted = _build_accepted_audiences(xsappname, bound_clientid)
+                jwt_audience = accepted or None
 
             claims = _validate_jwt_without_library(
                 token,

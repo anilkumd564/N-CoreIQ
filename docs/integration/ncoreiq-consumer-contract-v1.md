@@ -914,10 +914,14 @@ The following must be configured in BTP after the N-CoreShift XSUAA application 
 1. **N-CoreShift XSUAA application (`xsappname`)** must be known.
 2. **Role collection assignment** — the N-CoreShift technical user (service instance) must be assigned
    the `NCoreIQ Analyst` role collection in the BTP subaccount.
-3. **JWT audience** — N-CoreIQ's `xs-security.json` `oauth2-configuration` may need to add
-   `"redirect-uris"` or `"grant-types": ["client_credentials"]` if not already present.
-4. **`AUTH__AUDIENCE`** setting on N-CoreIQ may need to be updated to accept the N-CoreShift
-   `clientid` in the JWT `aud` claim.
+3. **JWT audience** — N-CoreIQ derives accepted audiences dynamically from its own XSUAA service
+   binding (VCAP_SERVICES) at runtime. No manual audience configuration is required in the normal
+   production deployment path.
+4. **`AUTH__AUDIENCE`** — do **not** set this to a tenant-qualified value (`!t...` suffix).
+   N-CoreIQ automatically accepts tokens whose `aud` array contains the XSUAA scope-namespace
+   audience (`<bound-xsappname>.NCoreIQ`), which XSUAA emits in any client_credentials token
+   carrying `NCoreIQ.*` scopes. `AUTH__AUDIENCE` is an advanced override intended for non-standard
+   environments only; it must never be populated with a manually constructed `!t` suffix.
 
 ### What Must NOT Be Done
 
@@ -932,7 +936,14 @@ The following must be configured in BTP after the N-CoreShift XSUAA application 
 ```
 # On N-CoreIQ BTP application:
 AUTH__MODE=xsuaa
-AUTH__AUDIENCE=<ncoreshift_clientid>   # or leave unset to accept any valid token from the subaccount
+# AUTH__AUDIENCE — do NOT set in normal production deployments.
+# N-CoreIQ derives the accepted audience dynamically from its bound XSUAA identity.
+# XSUAA emits <bound-xsappname>.NCoreIQ as an audience entry in client_credentials
+# tokens that carry NCoreIQ.* scopes. This derivation is automatic, portable across
+# tenants, and requires no operator intervention.
+#
+# ONLY set AUTH__AUDIENCE if advised by a specific advanced troubleshooting procedure.
+# NEVER set it to a manually constructed !t... tenant-qualified value.
 
 # In BTP subaccount:
 # Assign "NCoreIQ Analyst" role collection to the N-CoreShift service instance
