@@ -5,9 +5,24 @@ JWT claim dictionaries or XSUAA token objects.
 
 Roles / Scopes defined for N-CoreIQ:
     NCoreIQ.Viewer    — read-only: ping, packages, search, metadata, source, dependencies
-    NCoreIQ.Analyst   — Viewer + traversal, reverse lookup, impact analysis, source export
-    NCoreIQ.Operator  — Analyst + job cancellation, retry, artifact operations
+    NCoreIQ.Analyst   — Viewer + traversal, reverse lookup, impact analysis, source export,
+                        extraction job creation, job status polling, result retrieval, artifact
+                        download (the full N-CoreShift evidence workflow)
+    NCoreIQ.Operator  — Analyst + job cancellation and retry (operational control only)
     NCoreIQ.Admin     — Operator + diagnostics, configuration visibility, admin operations
+
+Canonical job-scope decision (Gate 0E10-R4-A1):
+    xs-security.json NCoreIQ.Analyst description: "all Viewer capabilities plus dependency
+    traversal, reverse analysis, impact analysis, source export, job management"
+
+    consumer-contract-v1.md Section 4 text: "NCoreIQ.Analyst — additionally required for
+    traversal, reverse analysis, impact analysis, and extraction jobs"
+
+    consumer-contract-v1.md Section 11: "Assign 'NCoreIQ Analyst' role collection to the
+    N-CoreShift service instance"
+
+    Therefore: create_job, list_jobs, get_job, get_job_result, download_artifact → ANALYST
+               cancel_job, retry_job → OPERATOR (operational control, not required by N-CoreShift)
 """
 from __future__ import annotations
 
@@ -41,6 +56,8 @@ VIEWER_ENDPOINTS = frozenset(
     }
 )
 
+# Analyst = Viewer + analysis operations + the full N-CoreShift job workflow
+# (create job, poll status, retrieve result, download artifact, list jobs)
 ANALYST_ENDPOINTS = VIEWER_ENDPOINTS | frozenset(
     {
         "traverse_dependencies",
@@ -49,17 +66,20 @@ ANALYST_ENDPOINTS = VIEWER_ENDPOINTS | frozenset(
         "bulk_extract",
         "bulk_export",
         "source_export",
+        # Extraction job workflow — required by N-CoreShift (Viewer + Analyst identity)
+        "create_job",
+        "list_jobs",
+        "get_job",
+        "get_job_result",
+        "download_artifact",
     }
 )
 
+# Operator = Analyst + operational job control (NOT required by N-CoreShift)
 OPERATOR_ENDPOINTS = ANALYST_ENDPOINTS | frozenset(
     {
-        "list_jobs",
-        "get_job",
         "cancel_job",
         "retry_job",
-        "download_artifact",
-        "create_job",
     }
 )
 

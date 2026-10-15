@@ -18,6 +18,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from app.auth.authorization import require_scope
+from app.auth.principal import AuthenticatedPrincipal
 from app.core.config import Settings, get_settings
 from app.models.requests import ObjectKey, RepositorySearchRequest
 from app.models.results import (
@@ -142,7 +144,10 @@ async def health(
         "PyRFC / SAP NetWeaver RFC SDK."
     ),
 )
-async def sap_ping(settings: Settings = Depends(get_settings)) -> ConnectionTestResult:
+async def sap_ping(
+    _auth: AuthenticatedPrincipal = Depends(require_scope("sap_ping")),
+    settings: Settings = Depends(get_settings),
+) -> ConnectionTestResult:
     provider = build_sap_connection_provider(settings)
     try:
         return await provider.ping()
@@ -188,6 +193,7 @@ async def sap_ping(settings: Settings = Depends(get_settings)) -> ConnectionTest
 )
 async def search_repository(
     request: RepositorySearchRequest,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("search_repository")),
     service: RepositoryService = Depends(get_discovery_service),
 ) -> RepositorySearchResponse:
     try:
@@ -289,6 +295,7 @@ async def get_packages(
     package: str,
     include_subpackages: bool = False,
     max_depth: int = 20,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_packages")),
     service: RepositoryService = Depends(repository_service),
 ) -> PackageResolutionResult:
     try:
@@ -380,6 +387,7 @@ async def get_packages(
 async def get_object_metadata(
     object_type: str,
     object_name: str,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_object_metadata")),
     service: RepositoryObjectService = Depends(get_object_service),
 ) -> RepositoryObjectMetadata:
     try:
@@ -481,6 +489,7 @@ async def get_object_source(
             "Omit to retrieve the complete source without truncation."
         ),
     ),
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_object_source")),
     service: RepositoryObjectService = Depends(get_object_service),
 ) -> RepositoryObjectSource:
     try:
@@ -569,6 +578,7 @@ async def get_object_source(
 )
 async def bulk_extract(
     request: BulkExtractionRequest,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("bulk_extract")),
     service: BulkExtractionService = Depends(get_bulk_extraction_service),
 ) -> BulkExtractionResult:
     try:
@@ -633,6 +643,7 @@ async def bulk_extract(
 )
 async def bulk_export(
     request: BulkExportRequest,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("bulk_export")),
     bulk_service: BulkExtractionService = Depends(get_bulk_extraction_service),
     export_service: RepositoryExportService = Depends(get_export_service),
 ) -> Response:
@@ -717,6 +728,7 @@ async def bulk_export(
 )
 async def source_export(
     request: BulkExportRequest,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("source_export")),
     bulk_service: BulkExtractionService = Depends(get_bulk_extraction_service),
     export_service: RepositoryExportService = Depends(get_export_service),
 ) -> Response:
@@ -779,6 +791,7 @@ async def source_export(
 )
 async def get_repository_object(
     key: ObjectKey,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_object_metadata")),
     service: RepositoryService = Depends(get_discovery_service),
 ):
     try:

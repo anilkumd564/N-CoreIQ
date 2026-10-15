@@ -237,7 +237,7 @@ def test_authenticated_principal_viewer_can_access_viewer_endpoints():
     assert principal.can_access("sap_ping")
     assert principal.can_access("search_repository")
     assert principal.can_access("get_object_metadata")
-    assert not principal.can_access("create_job")  # Operator only
+    assert not principal.can_access("create_job")  # Analyst-and-above only (not Viewer)
     assert not principal.can_access("diagnostics")  # Admin only
 
 
@@ -251,7 +251,9 @@ def test_authenticated_principal_analyst_can_access_analyst_endpoints():
     assert principal.is_analyst()
     assert principal.can_access("traverse_dependencies")
     assert principal.can_access("source_export")
-    assert not principal.can_access("create_job")
+    # Gate 0E10-R4-A1: create_job is canonically Analyst (N-CoreShift evidence workflow)
+    assert principal.can_access("create_job")
+    assert not principal.can_access("cancel_job")  # cancel_job is Operator only
 
 
 def test_authenticated_principal_operator_can_access_operator_endpoints():

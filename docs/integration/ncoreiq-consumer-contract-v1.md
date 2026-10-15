@@ -125,22 +125,37 @@ Scopes are defined in `deployment/btp/xs-security.json`.
 |---|---|---|
 | **Viewer** | `ncoreiq.NCoreIQ.Viewer` | SAP ping, packages, search, metadata, source, direct dependencies |
 | **Analyst** | `ncoreiq.NCoreIQ.Analyst` | All Viewer + traversal, reverse lookup, impact analysis, bulk extract, export |
-| **Operator** | `ncoreiq.NCoreIQ.Operator` | All Analyst + job management (list, get, create, cancel, retry, artifact download) |
+| **Operator** | `ncoreiq.NCoreIQ.Operator` | All Analyst + operational job control (cancel, retry) |
 | **Admin** | `ncoreiq.NCoreIQ.Admin` | All Operator + diagnostics, configuration visibility |
 
 **N-CoreShift minimum required scopes:**
 - `NCoreIQ.Viewer` — for all read operations (ping, packages, search, metadata, source, direct dependencies)
-- `NCoreIQ.Analyst` — additionally required for traversal, reverse analysis, impact analysis, and extraction jobs
+- `NCoreIQ.Analyst` — additionally required for traversal, reverse analysis, impact analysis, extraction jobs (create, list, get, result, artifact download)
 
 **Scope inheritance:** Higher roles always include all lower-role permissions.
 The `NCoreIQ_Analyst` role-template in `xs-security.json` includes both
 `NCoreIQ.Viewer` and `NCoreIQ.Analyst` scopes.
 
-> **Note:** Scope enforcement is applied at the middleware layer (principal extraction and injection into
-> `request.state.principal`). Authorization helpers are defined in `app/auth/principal.py`
-> (`can_access()`, `is_viewer()`, `is_analyst()`, etc.) but per-route `Depends` enforcement
-> is not yet wired on individual route handlers. In `AUTH_MODE=disabled` all requests succeed with
-> `ANONYMOUS_PRINCIPAL` (all scopes granted). Full per-route enforcement is a future hardening task.
+**Canonical job-scope decision (Gate 0E10-R4-A1):**
+
+| Job operation | Required scope | Rationale |
+|---|---|---|
+| Create extraction job (`POST /repository/jobs`) | `NCoreIQ.Analyst` | Required by N-CoreShift evidence workflow |
+| List jobs (`GET /repository/jobs`) | `NCoreIQ.Analyst` | Required by N-CoreShift monitoring |
+| Get job status (`GET /repository/jobs/{id}`) | `NCoreIQ.Analyst` | Required by N-CoreShift polling |
+| Get result summary (`GET /repository/jobs/{id}/result`) | `NCoreIQ.Analyst` | Required by N-CoreShift evidence collection |
+| Download artifact (`GET /repository/jobs/{id}/artifact`) | `NCoreIQ.Analyst` | Required by N-CoreShift evidence collection |
+| Cancel job (`POST /repository/jobs/{id}/cancel`) | `NCoreIQ.Operator` | Operational control — NOT required by N-CoreShift |
+| Retry job (`POST /repository/jobs/{id}/retry`) | `NCoreIQ.Operator` | Operational control — NOT required by N-CoreShift |
+
+**Authorization enforcement:** Per-route `Depends(require_scope(...))` is implemented in
+`app/auth/authorization.py` and wired to every protected route handler as of Gate 0E10-R4-A1.
+
+**HTTP authorization behavior:**
+- `401 Unauthorized` — no valid Bearer token (handled by `XSUAAAuthMiddleware` before route executes)
+- `403 Forbidden` — authenticated but insufficient scope (returned by `require_scope()` dependency)
+
+In `AUTH_MODE=disabled` all requests receive `ANONYMOUS_PRINCIPAL` (all scopes granted) — local development only.
 
 ---
 

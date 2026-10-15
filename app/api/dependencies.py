@@ -17,6 +17,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.auth.authorization import require_scope
+from app.auth.principal import AuthenticatedPrincipal
+
 from app.core.config import Settings, get_settings
 from app.models.phase8 import (
     MAX_RESULTS_DEFAULT,
@@ -142,6 +145,7 @@ async def get_object_dependencies(
     relationship_type: Annotated[list[str] | None, Query()] = None,
     min_confidence: str | None = None,
     max_results: int = MAX_RESULTS_DEFAULT,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_object_dependencies")),
     service: RepositoryDependencyService = Depends(get_dependency_service),
 ) -> DirectDependencyResult:
     try:
@@ -186,6 +190,7 @@ async def get_object_dependencies(
 )
 async def traverse_dependencies(
     request: DependencyTraversalRequest,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("traverse_dependencies")),
     service: RepositoryDependencyService = Depends(get_dependency_service),
 ) -> DependencyGraph:
     try:
@@ -228,6 +233,7 @@ async def traverse_dependencies(
 )
 async def get_reverse_dependencies(
     request: ReverseDependencyRequest,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_reverse_dependencies")),
     service: RepositoryDependencyService = Depends(get_dependency_service),
 ) -> ReverseDependencyResult:
     try:
@@ -265,6 +271,7 @@ async def get_reverse_dependencies(
 )
 async def get_impact_analysis(
     request: DependencyImpactRequest,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_impact_analysis")),
     service: RepositoryDependencyService = Depends(get_dependency_service),
 ) -> DependencyImpactResult:
     try:

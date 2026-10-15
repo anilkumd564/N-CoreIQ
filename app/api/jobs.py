@@ -1,4 +1,4 @@
-"""Phase 6 — Extraction Job API routes.
+"""Phase 6  Extraction Job API routes.
 
 Implements:
   POST   /api/v1/repository/jobs                        — create job (202)
@@ -8,6 +8,15 @@ Implements:
   GET    /api/v1/repository/jobs/{job_id}/artifact      — download artifact
   POST   /api/v1/repository/jobs/{job_id}/cancel        — request cancellation
   POST   /api/v1/repository/jobs/{job_id}/retry         — create retry job
+
+Authorization (Gate 0E10-R4-A1):
+  create_job     → NCoreIQ.Analyst  (required by N-CoreShift evidence workflow)
+  list_jobs      → NCoreIQ.Analyst
+  get_job        → NCoreIQ.Analyst
+  get_job_result → NCoreIQ.Analyst
+  download_artifact → NCoreIQ.Analyst
+  cancel_job     → NCoreIQ.Operator (operational control only, NOT required by N-CoreShift)
+  retry_job      → NCoreIQ.Operator
 
 Architecture:
     Route handlers → ExtractionJobService → JobStore / ArtifactStore
@@ -23,6 +32,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response
 
+from app.auth.authorization import require_scope
+from app.auth.principal import AuthenticatedPrincipal
 from app.core.config import Settings, get_settings
 from app.jobs.service import JobConflictError
 from app.models.phase6 import (
@@ -67,6 +78,7 @@ def get_job_service(request: Request):
         "Validates the request, persists a job with status=QUEUED, and returns "
         "immediately with HTTP 202.  The background worker picks up the job and "
         "calls Phase 5 BulkExtractionService.\n\n"
+        "**Required scope:** NCoreIQ.Analyst\n\n"
         "**Idempotency:** supply an `Idempotency-Key` header to prevent duplicate "
         "jobs when retrying a failed HTTP call.  The same key with the same "
         "request body returns the existing job.  The same key with a different "
@@ -75,6 +87,7 @@ def get_job_service(request: Request):
     ),
     responses={
         202: {"description": "Job accepted and queued."},
+        403: {"description": "Insufficient authorization (requires NCoreIQ.Analyst)."},
         409: {"description": "Idempotency key conflict."},
         422: {"description": "Validation error."},
     },
@@ -82,11 +95,12 @@ def get_job_service(request: Request):
 async def create_job(
     body: ExtractionJobRequest,
     request: Request,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("create_job")),
     settings: Settings = Depends(get_settings),
     job_service=Depends(get_job_service),
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> dict:
-    created_by: str | None = None  # auth not yet enabled
+    created_by: str | None = _auth.subject
 
     try:
         job = job_service.create_job(
@@ -121,6 +135,7 @@ async def create_job(
     summary="List extraction jobs",
     description=(
         "Returns a paginated list of extraction jobs, newest first.\n\n"
+        "**Required scope:** NCoreIQ.Analyst\n\n"
         "**Filters:** `status`, `created_after`, `created_before`.\n\n"
         "**Pagination:** `limit` (default 50, max 200) and `offset`."
     ),
@@ -131,6 +146,7 @@ async def list_jobs(
     created_before: str | None = Query(default=None, description="ISO-8601 datetime upper bound."),
     limit: int = Query(default=50, ge=1, le=200, description="Maximum results per page."),
     offset: int = Query(default=0, ge=0, description="Pagination offset."),
+    _auth: AuthenticatedPrincipal = Depends(require_scope("list_jobs")),
     settings: Settings = Depends(get_settings),
     job_service=Depends(get_job_service),
 ) -> JobListResponse:
@@ -159,15 +175,18 @@ async def list_jobs(
     summary="Get extraction job status",
     description=(
         "Returns the current status, stage, progress, result summary, and "
-        "artifact summary for a job.  Poll this endpoint to track progress."
+        "artifact summary for a job.  Poll this endpoint to track progress.\n\n"
+        "**Required scope:** NCoreIQ.Analyst"
     ),
     responses={
         200: {"description": "Job found."},
+        403: {"description": "Insufficient authorization (requires NCoreIQ.Analyst)."},
         404: {"description": "Job not found."},
     },
 )
 async def get_job(
     job_id: str,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_job")),
     job_service=Depends(get_job_service),
 ) -> ExtractionJob:
     job = job_service.get_job(job_id)
@@ -186,6 +205,7 @@ async def get_job(
     summary="Get extraction result summary for a completed job",
     description=(
         "Returns the **job result summary** for a completed extraction job.\n\n"
+        "**Required scope:** NCoreIQ.Analyst\n\n"
         "The summary contains object counts and warnings from the Phase-5 "
         "extraction run. It does **not** contain the complete per-object "
         "extracted evidence payload.\n\n"
@@ -197,17 +217,20 @@ async def get_job(
         "3. Download artifact for extracted object payload.\n\n"
         "**Status codes:**\n"
         "- `200` — Result summary available.\n"
+        "- `403` — Insufficient authorization (requires NCoreIQ.Analyst).\n"
         "- `404` — Job not found.\n"
         "- `409` — Job has not yet completed (result not available).\n"
     ),
     responses={
         200: {"description": "Job result summary."},
+        403: {"description": "Insufficient authorization (requires NCoreIQ.Analyst)."},
         404: {"description": "Job not found."},
         409: {"description": "Result not yet available."},
     },
 )
 async def get_job_result(
     job_id: str,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("get_job_result")),
     job_service=Depends(get_job_service),
 ) -> JobResultResponse:
     job = job_service.get_job(job_id)
@@ -235,8 +258,10 @@ async def get_job_result(
     summary="Download export artifact for a completed job",
     description=(
         "Returns the export file (JSON or ZIP) produced by the job.\n\n"
+        "**Required scope:** NCoreIQ.Analyst\n\n"
         "**Status codes:**\n"
         "- `200` — Artifact available.\n"
+        "- `403` — Insufficient authorization (requires NCoreIQ.Analyst).\n"
         "- `404` — Job not found.\n"
         "- `409` — Job not yet complete or no artifact was requested.\n"
         "- `410` — Artifact has expired and been deleted.\n"
@@ -249,6 +274,7 @@ async def get_job_result(
             },
             "description": "Export artifact.",
         },
+        403: {"description": "Insufficient authorization (requires NCoreIQ.Analyst)."},
         404: {"description": "Job not found."},
         409: {"description": "Artifact not yet available."},
         410: {"description": "Artifact has expired."},
@@ -256,6 +282,7 @@ async def get_job_result(
 )
 async def get_job_artifact(
     job_id: str,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("download_artifact")),
     job_service=Depends(get_job_service),
 ) -> Response:
     job = job_service.get_job(job_id)
@@ -313,18 +340,21 @@ async def get_job_artifact(
         "Cancels a QUEUED job immediately or requests cooperative cancellation "
         "for a RUNNING job.  A RUNNING job transitions to CANCEL_REQUESTED; the "
         "worker stops at the next safe checkpoint.\n\n"
+        "**Required scope:** NCoreIQ.Operator\n\n"
         "**Note:** An in-flight SAP HTTP request will be allowed to complete "
         "before the job halts.\n\n"
         "Cancelling a job that is already terminal is a no-op (idempotent)."
     ),
     responses={
         202: {"description": "Cancellation accepted."},
+        403: {"description": "Insufficient authorization (requires NCoreIQ.Operator)."},
         404: {"description": "Job not found."},
         409: {"description": "Job is already in a terminal state."},
     },
 )
 async def cancel_job(
     job_id: str,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("cancel_job")),
     job_service=Depends(get_job_service),
 ) -> dict:
     job = job_service.get_job(job_id)
@@ -355,14 +385,17 @@ async def cancel_job(
         "Creates a NEW job using the same validated request as the original.  "
         "The new job references the original via `retry_of_job_id` and increments "
         "`attempt`.  The original job history is preserved.\n\n"
+        "**Required scope:** NCoreIQ.Operator\n\n"
         "**Eligible states:** FAILED, CANCELLED.\n\n"
         "**Status codes:**\n"
         "- `202` — New retry job created and queued.\n"
+        "- `403` — Insufficient authorization (requires NCoreIQ.Operator).\n"
         "- `404` — Original job not found.\n"
         "- `409` — Job is not in a retryable terminal state.\n"
     ),
     responses={
         202: {"description": "Retry job created."},
+        403: {"description": "Insufficient authorization (requires NCoreIQ.Operator)."},
         404: {"description": "Original job not found."},
         409: {"description": "Job is not retryable."},
     },
@@ -370,6 +403,7 @@ async def cancel_job(
 async def retry_job(
     job_id: str,
     request: Request,
+    _auth: AuthenticatedPrincipal = Depends(require_scope("retry_job")),
     job_service=Depends(get_job_service),
 ) -> dict:
     job = job_service.get_job(job_id)
