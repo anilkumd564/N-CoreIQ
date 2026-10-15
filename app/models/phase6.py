@@ -369,6 +369,133 @@ class JobListFilter(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Result-summary model (Phase 6 contract repair — Gate 0E10-R2)
+# ---------------------------------------------------------------------------
+
+
+class ExtractionResultSummary(BaseModel):
+    """Typed summary of a completed Phase-5 BulkExtractionResult.
+
+    Stored in SQLite as ``result_summary_json`` by
+    ``SQLiteJobStore.finish_job()`` and exposed ONLY through
+    ``GET /api/v1/repository/jobs/{job_id}/result``.
+
+    This model is intentionally NOT embedded in ``ExtractionJob`` so that
+    the ordinary job STATUS endpoint remains a lightweight operational view
+    and does not carry the extraction summary payload.
+    """
+
+    extraction_id: str | None = Field(
+        default=None,
+        description="Unique ID of the Phase-5 extraction run.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="Phase-5 extraction outcome: COMPLETED, COMPLETED_WITH_ERRORS, FAILED.",
+    )
+    selection: str | None = Field(
+        default=None,
+        description="Selection mode used for the extraction (e.g. 'explicit').",
+    )
+    requested_object_count: int = Field(
+        default=0,
+        description="Number of objects submitted for extraction.",
+    )
+    processed_object_count: int = Field(
+        default=0,
+        description="Number of objects actually processed.",
+    )
+    successful_object_count: int = Field(
+        default=0,
+        description="Objects extracted successfully.",
+    )
+    partial_object_count: int = Field(
+        default=0,
+        description="Objects extracted with partial data.",
+    )
+    failed_object_count: int = Field(
+        default=0,
+        description="Objects that failed extraction.",
+    )
+    skipped_object_count: int = Field(
+        default=0,
+        description="Objects skipped (e.g. unsupported type).",
+    )
+    truncated_object_count: int = Field(
+        default=0,
+        description="Objects whose source was truncated at the requested max_lines.",
+    )
+    duration_ms: float | None = Field(
+        default=None,
+        description="Total Phase-5 extraction duration in milliseconds.",
+    )
+    metadata_enabled: bool = Field(
+        default=False,
+        description="True when metadata retrieval was requested.",
+    )
+    source_enabled: bool = Field(
+        default=False,
+        description="True when source retrieval was requested.",
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal warnings emitted during extraction.",
+    )
+
+
+class JobResultResponse(BaseModel):
+    """Response model for GET /api/v1/repository/jobs/{job_id}/result.
+
+    Returns an operational job-result summary for a completed extraction job.
+
+    **Important:** This endpoint returns a SUMMARY only.
+    The complete extracted object evidence (source, metadata, dependencies)
+    is available via GET /api/v1/repository/jobs/{job_id}/artifact.
+    """
+
+    job_id: str = Field(description="Unique job identifier.")
+    status: JobStatus = Field(description="Terminal job lifecycle status.")
+    stage: JobStage | None = Field(
+        default=None,
+        description="Final execution stage (typically COMPLETED).",
+    )
+    result_status: str | None = Field(
+        default=None,
+        description=(
+            "Phase-5 extraction outcome: COMPLETED, COMPLETED_WITH_ERRORS, or FAILED. "
+            "Distinct from the job infrastructure status."
+        ),
+    )
+    progress: ExtractionJobProgress | None = Field(
+        default=None,
+        description="Final job progress snapshot.",
+    )
+    error: JobError | None = Field(
+        default=None,
+        description="Infrastructure-level error if the job failed.",
+    )
+    artifact: JobArtifact | None = Field(
+        default=None,
+        description=(
+            "Artifact metadata if an export artifact was produced. "
+            "Use GET /artifact to download the complete extracted object payload."
+        ),
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        description="UTC timestamp when the job reached a terminal state.",
+    )
+    summary: ExtractionResultSummary | None = Field(
+        default=None,
+        description=(
+            "Extraction statistics summary. Present when the job reached "
+            "SUCCEEDED or FAILED after Phase-5 processing began. "
+            "Contains object counts and warnings — NOT the per-object evidence payload."
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Health fragment
 # ---------------------------------------------------------------------------
 

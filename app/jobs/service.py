@@ -241,6 +241,14 @@ class ExtractionJobService:
             raise ValueError(
                 f"Job {job_id} is not yet complete (status={job.status.value})."
             )
+        # Fetch the stored extraction summary directly from the store so that
+        # result_summary_json survives the full SQLite round-trip.  The field
+        # is intentionally NOT embedded in ExtractionJob to keep the status
+        # endpoint lightweight.
+        summary: dict | None = None
+        if hasattr(self._store, "get_result_summary"):
+            summary = self._store.get_result_summary(job_id)
+
         return {
             "job_id": job.job_id,
             "status": job.status.value,
@@ -250,6 +258,7 @@ class ExtractionJobService:
             "error": job.error.model_dump() if job.error else None,
             "artifact": job.artifact.model_dump() if job.artifact else None,
             "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "summary": summary,
         }
 
     def get_artifact_stream(self, job_id: str):

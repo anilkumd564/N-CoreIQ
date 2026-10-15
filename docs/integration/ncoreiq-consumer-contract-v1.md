@@ -652,9 +652,16 @@ A scope (`packages`, `name_patterns`, or `all_custom_objects=true`) is required.
 
 ---
 
-### L. Extraction Job Result
+### L. Extraction Job Result Summary
 
-**Purpose:** Retrieve result summary for a completed job.
+**Purpose:** Retrieve the extraction result summary for a completed job.
+
+> **Important:** This endpoint returns a **summary only** — object counts,
+> warnings, and job metadata. It does **not** return the complete extracted
+> repository object payload (source, metadata, dependencies).
+>
+> Complete extracted evidence is available via the **artifact endpoint**
+> (`GET /api/v1/repository/jobs/{job_id}/artifact`).
 
 | | |
 |---|---|
@@ -662,8 +669,105 @@ A scope (`packages`, `name_patterns`, or `all_custom_objects=true`) is required.
 | **Path** | `/api/v1/repository/jobs/{job_id}/result` |
 | **Auth required** | Yes (XSUAA mode) |
 | **Minimum scope** | `NCoreIQ.Analyst` |
+| **Synchronous** | Yes |
 
-**Error responses:** `404` (job not found), `409` (job not yet complete)
+**Response (200):**
+```json
+{
+  "job_id": "uuid",
+  "status": "SUCCEEDED",
+  "stage": "COMPLETED",
+  "result_status": "COMPLETED",
+  "completed_at": "2026-10-11T18:05:00Z",
+  "progress": {
+    "total_objects": 5,
+    "processed_objects": 5,
+    "successful_objects": 5,
+    "partial_objects": 0,
+    "failed_objects": 0,
+    "skipped_objects": 0,
+    "truncated_objects": 0,
+    "percent_complete": 100.0,
+    "current_object_type": null,
+    "current_object_name": null,
+    "current_stage": "COMPLETED",
+    "message": null
+  },
+  "error": null,
+  "artifact": {
+    "artifact_id": "ncoreiq_uuid",
+    "format": "zip",
+    "filename": "ncoreiq_uuid.zip",
+    "content_type": "application/zip",
+    "size_bytes": 204800,
+    "sha256": "a3f1c2d4...",
+    "created_at": "2026-10-11T18:05:01Z",
+    "expires_at": "2026-10-18T18:05:01Z"
+  },
+  "summary": {
+    "extraction_id": "uuid",
+    "status": "COMPLETED",
+    "selection": "explicit",
+    "requested_object_count": 5,
+    "processed_object_count": 5,
+    "successful_object_count": 5,
+    "partial_object_count": 0,
+    "failed_object_count": 0,
+    "skipped_object_count": 0,
+    "truncated_object_count": 0,
+    "duration_ms": 1234.5,
+    "metadata_enabled": true,
+    "source_enabled": true,
+    "warnings": []
+  }
+}
+```
+
+**Top-level fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `job_id` | string | Job identifier |
+| `status` | string | Terminal job status: `SUCCEEDED`, `FAILED`, or `CANCELLED` |
+| `stage` | string | Final execution stage (typically `COMPLETED`) |
+| `result_status` | string | Phase-5 extraction outcome: `COMPLETED`, `COMPLETED_WITH_ERRORS`, or `FAILED` |
+| `completed_at` | ISO-8601 | UTC timestamp when the job reached a terminal state |
+| `progress` | object | Final progress snapshot (counts, percent) |
+| `error` | object \| null | Infrastructure-level error if the job failed; otherwise null |
+| `artifact` | object \| null | Artifact metadata if an export file was produced; otherwise null |
+| `summary` | object \| null | Phase-5 extraction statistics; null if job was cancelled before extraction began |
+
+**`summary` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `extraction_id` | string | Unique Phase-5 extraction run ID |
+| `status` | string | Phase-5 outcome: `COMPLETED`, `COMPLETED_WITH_ERRORS`, `FAILED` |
+| `selection` | string | Selection mode (`explicit`, `package`, etc.) |
+| `requested_object_count` | int | Objects submitted for extraction |
+| `processed_object_count` | int | Objects actually processed |
+| `successful_object_count` | int | Objects extracted successfully |
+| `partial_object_count` | int | Objects extracted with partial data |
+| `failed_object_count` | int | Objects that failed extraction |
+| `skipped_object_count` | int | Objects skipped (e.g. unsupported type) |
+| `truncated_object_count` | int | Objects whose source was truncated at `source_max_lines` |
+| `duration_ms` | float | Phase-5 extraction duration in milliseconds |
+| `metadata_enabled` | bool | Whether metadata retrieval was requested |
+| `source_enabled` | bool | Whether source retrieval was requested |
+| `warnings` | string[] | Non-fatal warnings emitted during extraction |
+
+**`result_status` vs `status`:**
+- `status` = infrastructure job lifecycle (`SUCCEEDED` / `FAILED` / `CANCELLED`)
+- `result_status` = Phase-5 extraction outcome (`COMPLETED` / `COMPLETED_WITH_ERRORS` / `FAILED`)
+- A job with `status=SUCCEEDED` may have `result_status=COMPLETED_WITH_ERRORS` when some objects
+  failed but the infrastructure job itself completed normally.
+
+**Error responses:**
+
+| Code | Meaning |
+|---|---|
+| `404` | Job not found |
+| `409` | Job has not yet reached a terminal state (result not available) |
 
 ---
 

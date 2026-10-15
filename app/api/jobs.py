@@ -29,6 +29,7 @@ from app.models.phase6 import (
     ExtractionJob,
     ExtractionJobRequest,
     JobListResponse,
+    JobResultResponse,
     JobStatus,
     TERMINAL_STATUSES,
     JobArtifactFormat,
@@ -181,17 +182,26 @@ async def get_job(
 
 @jobs_router.get(
     "/{job_id}/result",
-    summary="Get extraction result for a completed job",
+    response_model=JobResultResponse,
+    summary="Get extraction result summary for a completed job",
     description=(
-        "Returns the BulkExtractionResult for a completed job.  "
-        "Only available when the job has reached a terminal state with a result.\n\n"
+        "Returns the **job result summary** for a completed extraction job.\n\n"
+        "The summary contains object counts and warnings from the Phase-5 "
+        "extraction run. It does **not** contain the complete per-object "
+        "extracted evidence payload.\n\n"
+        "**Complete extracted evidence** (source, metadata, dependencies) is "
+        "available via `GET /api/v1/repository/jobs/{job_id}/artifact`.\n\n"
+        "**Canonical consumer workflow:**\n"
+        "1. Poll job status until terminal.\n"
+        "2. Call this endpoint to inspect counts/warnings.\n"
+        "3. Download artifact for extracted object payload.\n\n"
         "**Status codes:**\n"
-        "- `200` — Result available.\n"
+        "- `200` — Result summary available.\n"
         "- `404` — Job not found.\n"
         "- `409` — Job has not yet completed (result not available).\n"
     ),
     responses={
-        200: {"description": "Extraction result."},
+        200: {"description": "Job result summary."},
         404: {"description": "Job not found."},
         409: {"description": "Result not yet available."},
     },
@@ -199,7 +209,7 @@ async def get_job(
 async def get_job_result(
     job_id: str,
     job_service=Depends(get_job_service),
-) -> dict:
+) -> JobResultResponse:
     job = job_service.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found.")

@@ -1187,6 +1187,369 @@ class TestResultAPI:
         assert resp.status_code == 404
 
 
+# ---------------------------------------------------------------------------
+# 22. Result Summary — Store Round-Trip (Gate 0E10-R2 regression guard)
+# ---------------------------------------------------------------------------
+
+class TestResultSummaryStoreRoundTrip:
+    """Proves result_summary_json survives the full SQLite round-trip.
+
+    This test was designed to FAIL against the Gate-0E10-R1 implementation
+    (where _row_to_job() discarded result_summary) and PASS after the R2 repair
+    (get_result_summary() reads directly from the DB column).
+    """
+
+    _SAMPLE_SUMMARY = {
+        "extraction_id": "ext-roundtrip-01",
+        "status": "COMPLETED",
+        "selection": "explicit",
+        "requested_object_count": 3,
+        "processed_object_count": 3,
+        "successful_object_count": 2,
+        "partial_object_count": 1,
+        "failed_object_count": 0,
+        "skipped_object_count": 0,
+        "truncated_object_count": 0,
+        "duration_ms": 420.0,
+        "metadata_enabled": True,
+        "source_enabled": True,
+        "warnings": ["ZCLASS_TRICKY: source truncated at max_lines"],
+    }
+
+    def test_result_summary_survives_sqlite_roundtrip(
+        self, tmp_db, job_service, sample_request
+    ):
+        """finish_job(result_summary=...) → SQLite → get_result_summary() round-trip."""
+        job = job_service.create_job(request=sample_request)
+        tmp_db.claim_next_job(worker_id="w-rt", lease_seconds=60)
+
+        tmp_db.finish_job(
+            job_id=job.job_id,
+            status=JobStatus.SUCCEEDED,
+            result_status="COMPLETED",
+            result_summary=self._SAMPLE_SUMMARY,
+        )
+
+        retrieved = tmp_db.get_result_summary(job.job_id)
+        assert retrieved is not None, "result_summary was discarded — round-trip FAILED"
+
+        assert retrieved["extraction_id"] == "ext-roundtrip-01"
+        assert retrieved["status"] == "COMPLETED"
+        assert retrieved["requested_object_count"] == 3
+        assert retrieved["successful_object_count"] == 2
+        assert retrieved["partial_object_count"] == 1
+        assert retrieved["duration_ms"] == 420.0
+        assert retrieved["metadata_enabled"] is True
+        assert retrieved["source_enabled"] is True
+        assert len(retrieved["warnings"]) == 1
+
+    def test_get_result_summary_missing_job_returns_none(self, tmp_db):
+        """Non-existent job returns None — never raises."""
+        result = tmp_db.get_result_summary("no-such-job-id")
+        assert result is None
+
+    def test_get_result_summary_no_summary_returns_none(
+        self, tmp_db, job_service, sample_request
+    ):
+        """Job finished without a result_summary → get_result_summary returns None."""
+        job = job_service.create_job(request=sample_request)
+        tmp_db.claim_next_job(worker_id="w-ns", lease_seconds=60)
+        tmp_db.finish_job(
+            job_id=job.job_id,
+            status=JobStatus.SUCCEEDED,
+            result_status="COMPLETED",
+            result_summary=None,  # explicitly no summary
+        )
+        result = tmp_db.get_result_summary(job.job_id)
+        assert result is None
+
+    def test_service_get_result_exposes_summary(
+        self, tmp_db, job_service, sample_request
+    ):
+        """ExtractionJobService.get_result() returns summary dict when present."""
+        job = job_service.create_job(request=sample_request)
+        tmp_db.claim_next_job(worker_id="w-svc", lease_seconds=60)
+        tmp_db.finish_job(
+            job_id=job.job_id,
+            status=JobStatus.SUCCEEDED,
+            result_status="COMPLETED",
+            result_summary=self._SAMPLE_SUMMARY,
+        )
+
+        result = job_service.get_result(job.job_id)
+        assert "summary" in result
+        assert result["summary"] is not None
+        assert result["summary"]["extraction_id"] == "ext-roundtrip-01"
+        assert result["summary"]["requested_object_count"] == 3
+
+    def test_service_get_result_summary_none_when_absent(
+        self, tmp_db, job_service, sample_request
+    ):
+        """ExtractionJobService.get_result() returns summary=None when not stored."""
+        job = job_service.create_job(request=sample_request)
+        tmp_db.claim_next_job(worker_id="w-none", lease_seconds=60)
+        tmp_db.finish_job(
+            job_id=job.job_id,
+            status=JobStatus.SUCCEEDED,
+            result_status="COMPLETED",
+        )
+        result = job_service.get_result(job.job_id)
+        assert "summary" in result
+        assert result["summary"] is None
+
+
+# ---------------------------------------------------------------------------
+# 23. Result Endpoint — Full API Contract (Gate 0E10-R2)
+# ---------------------------------------------------------------------------
+
+class TestResultEndpointContract:
+    """API-level tests for the corrected result endpoint.
+
+    Uses a dedicated FastAPI test client with an injected SQLiteJobStore so
+    that jobs can be programmatically finished with a known result_summary.
+    """
+
+    @pytest.fixture()
+    def completed_job_client(self, tmp_db, artifact_store):
+        """Test client wired to tmp_db so we can pre-finish jobs."""
+        from fastapi.testclient import TestClient
+        from app.main import create_app
+        from app.jobs.service import ExtractionJobService
+
+        svc = ExtractionJobService(job_store=tmp_db, artifact_store=artifact_store)
+        app = create_app(
+            job_store=tmp_db,
+            artifact_store=artifact_store,
+            job_service=svc,
+        )
+        with TestClient(app, raise_server_exceptions=True) as client:
+            yield client, tmp_db
+
+    _PAYLOAD = {
+        "extraction": {
+            "objects": [{"object_type": "PROG", "object_name": "ZCONTRACT1"}],
+            "include_metadata": True,
+        },
+        "export_format": "json",
+    }
+
+    _SUMMARY = {
+        "extraction_id": "ext-contract-01",
+        "status": "COMPLETED",
+        "selection": "explicit",
+        "requested_object_count": 1,
+        "processed_object_count": 1,
+        "successful_object_count": 1,
+        "partial_object_count": 0,
+        "failed_object_count": 0,
+        "skipped_object_count": 0,
+        "truncated_object_count": 0,
+        "duration_ms": 100.0,
+        "metadata_enabled": True,
+        "source_enabled": False,
+        "warnings": [],
+    }
+
+    def _finish_job(self, store, job_id, summary=None):
+        store.claim_next_job(worker_id="w-contract", lease_seconds=60)
+        store.finish_job(
+            job_id=job_id,
+            status=JobStatus.SUCCEEDED,
+            result_status="COMPLETED",
+            result_summary=summary,
+        )
+
+    # ------------------------------------------------------------------
+    # Existing status-code tests (preserved)
+    # ------------------------------------------------------------------
+
+    def test_result_queued_job_returns_409(self, completed_job_client):
+        client, _ = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        resp = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result")
+        assert resp.status_code == 409
+
+    def test_result_unknown_job_returns_404(self, completed_job_client):
+        client, _ = completed_job_client
+        resp = client.get("/api/v1/repository/jobs/no-such-contract-job/result")
+        assert resp.status_code == 404
+
+    # ------------------------------------------------------------------
+    # New: 200 body structure assertions
+    # ------------------------------------------------------------------
+
+    def test_result_succeeded_job_returns_200(self, completed_job_client):
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        resp = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result")
+        assert resp.status_code == 200
+
+    def test_result_200_contains_job_id(self, completed_job_client):
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        data = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result").json()
+        assert data["job_id"] == job["job_id"]
+
+    def test_result_200_contains_status(self, completed_job_client):
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        data = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result").json()
+        assert data["status"] == "SUCCEEDED"
+
+    def test_result_200_contains_summary_key(self, completed_job_client):
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        data = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result").json()
+        assert "summary" in data, "result response must contain 'summary' key"
+
+    def test_result_200_summary_has_counts(self, completed_job_client):
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        data = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result").json()
+        summary = data["summary"]
+        assert summary is not None
+        assert summary["requested_object_count"] == 1
+        assert summary["successful_object_count"] == 1
+        assert summary["extraction_id"] == "ext-contract-01"
+
+    def test_result_200_summary_has_warnings(self, completed_job_client):
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        data = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result").json()
+        assert "warnings" in data["summary"]
+
+    def test_result_200_does_not_contain_results_array(self, completed_job_client):
+        """Contract guard: per-object results array must NEVER appear in the result endpoint."""
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        data = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result").json()
+        assert "results" not in data, (
+            "result endpoint must NOT embed per-object results array — "
+            "extracted objects belong in the artifact"
+        )
+
+    def test_result_200_summary_none_when_no_summary_stored(self, completed_job_client):
+        """summary is null when job was cancelled before extraction ran."""
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        # finish without a result_summary (cancelled before extraction)
+        store.claim_next_job(worker_id="w-cancel-pre", lease_seconds=60)
+        store.finish_job(
+            job_id=job["job_id"],
+            status=JobStatus.CANCELLED,
+            result_status=None,
+            result_summary=None,
+        )
+
+        data = client.get(f"/api/v1/repository/jobs/{job['job_id']}/result").json()
+        assert data["status"] == "CANCELLED"
+        assert data["summary"] is None
+
+    def test_result_status_endpoint_does_not_expose_summary(self, completed_job_client):
+        """Job STATUS endpoint must NOT expose result_summary (separation test)."""
+        client, store = completed_job_client
+        job = client.post("/api/v1/repository/jobs", json=self._PAYLOAD).json()
+        self._finish_job(store, job["job_id"], summary=self._SUMMARY)
+
+        status_data = client.get(f"/api/v1/repository/jobs/{job['job_id']}").json()
+        # The status endpoint (ExtractionJob model) must not carry the summary
+        assert "summary" not in status_data, (
+            "result_summary must NOT appear in the job STATUS endpoint — "
+            "use GET /result for the summary"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 24. OpenAPI Schema Contract (Gate 0E10-R2)
+# ---------------------------------------------------------------------------
+
+class TestResultOpenAPIContract:
+    """Verify the OpenAPI schema formally declares the result endpoint contract."""
+
+    def test_openapi_result_endpoint_has_response_model(self):
+        """The result endpoint must declare an explicit response model (not generic object)."""
+        from app.main import app
+        schema = app.openapi()
+        path = "/api/v1/repository/jobs/{job_id}/result"
+        assert path in schema["paths"], f"Path {path} not in OpenAPI schema"
+        endpoint = schema["paths"][path]["get"]
+        response_200 = endpoint["responses"]["200"]
+        content = response_200.get("content", {})
+        json_schema = content.get("application/json", {}).get("schema", {})
+        # Must reference a named component (not be an anonymous generic object)
+        assert "$ref" in json_schema or "allOf" in json_schema, (
+            f"result endpoint must declare a named response model, got: {json_schema}"
+        )
+
+    def test_openapi_result_schema_has_summary_field(self):
+        """The JobResultResponse schema must include 'summary' in its properties."""
+        from app.main import app
+        schema = app.openapi()
+        components = schema.get("components", {}).get("schemas", {})
+        assert "JobResultResponse" in components, (
+            "JobResultResponse schema must be in OpenAPI components"
+        )
+        props = components["JobResultResponse"].get("properties", {})
+        assert "summary" in props, (
+            "JobResultResponse must have a 'summary' property in OpenAPI schema"
+        )
+
+    def test_openapi_result_schema_has_no_results_array(self):
+        """The JobResultResponse schema must NOT have a 'results' array property."""
+        from app.main import app
+        schema = app.openapi()
+        components = schema.get("components", {}).get("schemas", {})
+        if "JobResultResponse" in components:
+            props = components["JobResultResponse"].get("properties", {})
+            assert "results" not in props, (
+                "JobResultResponse must NOT have a 'results' array — "
+                "extracted objects belong in the artifact"
+            )
+
+    def test_openapi_result_schema_has_job_id_field(self):
+        """JobResultResponse must expose job_id."""
+        from app.main import app
+        schema = app.openapi()
+        components = schema.get("components", {}).get("schemas", {})
+        assert "JobResultResponse" in components
+        props = components["JobResultResponse"].get("properties", {})
+        assert "job_id" in props
+
+    def test_openapi_extraction_result_summary_schema_present(self):
+        """ExtractionResultSummary must appear as a named component."""
+        from app.main import app
+        schema = app.openapi()
+        components = schema.get("components", {}).get("schemas", {})
+        assert "ExtractionResultSummary" in components, (
+            "ExtractionResultSummary must be declared in OpenAPI components"
+        )
+
+    def test_openapi_extraction_result_summary_has_count_fields(self):
+        """ExtractionResultSummary must expose count fields."""
+        from app.main import app
+        schema = app.openapi()
+        components = schema.get("components", {}).get("schemas", {})
+        if "ExtractionResultSummary" in components:
+            props = components["ExtractionResultSummary"].get("properties", {})
+            assert "requested_object_count" in props
+            assert "successful_object_count" in props
+            assert "warnings" in props
+
+
 class TestArtifactAPI:
     def _create_job(self, client):
         payload = {

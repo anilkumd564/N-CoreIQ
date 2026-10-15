@@ -530,6 +530,31 @@ class SQLiteJobStore:
             ).fetchone()
         return self._row_to_job(row) if row else None
 
+    def get_result_summary(self, job_id: str) -> Optional[dict]:
+        """Read and return the stored result_summary_json for a job.
+
+        Returns the parsed dict if present, or None if the job does not exist
+        or has no result summary (e.g. job was cancelled before extraction ran).
+        Never raises — callers treat None as 'no summary available'.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT result_summary_json FROM extraction_jobs WHERE job_id = ?",
+                (job_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        raw = row["result_summary_json"]
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            logger.warning(
+                "event=result_summary_parse_error job_id=%s", job_id
+            )
+            return None
+
     def count_by_status(self) -> dict[str, int]:
         """Return {status: count} mapping for health/diagnostics."""
         with self._connect() as conn:
