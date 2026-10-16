@@ -219,17 +219,26 @@ class RepositoryDiscoveryService:
         # When we have multiple OData calls the individual total_matches
         # figures may overlap (same object in package + pattern call), so
         # we only use the value from a single-call result if it is safe to
-        # do so; otherwise null signals "undetermined".
-        total_matches: int | None
+        # do so.
+        #
+        # SearchStatistics.total_matches is a non-nullable API contract
+        # field (see app/models/results.py).  It must always resolve to a
+        # concrete integer here — "undetermined" is an internal-only
+        # concept and must never be represented as None at this boundary.
+        # When the true aggregate total cannot be trusted (multi-call
+        # fan-out, where per-call SAP totals may overlap across packages /
+        # patterns / object types), the deduplicated, truncation-capped
+        # `returned` count is used as the safe fallback.  This mirrors the
+        # existing single-call behaviour where a missing SAP total also
+        # falls back to `returned`, and never overwrites a genuinely known
+        # total_matches value.
+        total_matches: int
         if len(plans) == 1:
             total_matches = any_total_matches if any_total_matches is not None else returned
         else:
-            # Multi-call: totals can overlap; trust returned count only.
-            total_matches = None if any_truncated else returned
-
-        # When ECC did not return total_matches and there is no truncation,
-        # the returned count is exact.
-        if total_matches is None and not any_truncated:
+            # Multi-call: aggregate SAP totals cannot be trusted (they may
+            # overlap), regardless of truncation state, so `returned` is
+            # always used as the well-defined lower-bound fallback.
             total_matches = returned
 
         elapsed = time.monotonic() - start

@@ -555,3 +555,162 @@ class TestRepositoryDiscovery:
         assert resp.statistics.returned == 4
         names = {o.object_name for o in resp.objects}
         assert names == {"ZFI_PROG", "ZFI_CLAS", "ZPAY_PROG", "ZPAY_CLAS"}
+
+
+# ---------------------------------------------------------------------------
+# Gate 0E10-R4-DS1 — total_matches null-handling regression tests
+# ---------------------------------------------------------------------------
+
+
+class TestTotalMatchesNullHandling:
+    """Reproduces and verifies the fix for the live HTTP 422 defect where
+    SearchStatistics(total_matches=None, ...) raised a Pydantic
+    ValidationError when the SAP provider did not supply a trustworthy
+    aggregate total across a multi-call (fan-out) discovery.
+    """
+
+    @pytest.mark.asyncio
+    async def test_null_total_matches_multi_call_does_not_raise(self):
+        """Multi-plan discovery where every provider call reports
+        total_matches=None must not raise a Pydantic ValidationError and
+        must produce a valid integer total_matches in the response.
+        """
+        svc = _make_service_multi(
+            [
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="ZPROG_CUSTOM", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=None,
+                ),
+                _odata_result(
+                    objects=[_prog_row(OBJ_NAME="YPROG_CUSTOM", MATCH_REASON="NAME_PATTERN")],
+                    total_matches=None,
+                ),
+            ]
+        )
+        req = RepositorySearchRequest(name_patterns=["Z*", "Y*"])
+        # Must not raise pydantic.ValidationError.
+        resp = await svc.search(req)
+        assert isinstance(resp.statistics.total_matches, int)
+        assert resp.statistics.total_matches == resp.statistics.returned
+        assert resp.statistics.returned == 2
+
+    @pytest.mark.asyncio
+    async def test_null_total_matches_single_call_falls_back_to_returned(self):
+        """Single-plan discovery with total_matches=None falls back to the
+        returned count (pre-existing behaviour, preserved by this gate).
+        """
+        svc = _make_service(
+            _odata_result(objects=[_prog_row()], total_matches=None)
+        )
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
+        resp = await svc.search(req)
+        assert resp.statistics.total_matches == 1
+        assert resp.statistics.returned == 1
+
+    @pytest.mark.asyncio
+    async def test_null_total_matches_empty_results(self):
+        """Zero-row multi-call discovery with total_matches=None on every
+        call must still produce a valid (zero) total_matches.
+        """
+        svc = _make_service_multi(
+            [
+                _odata_result(objects=[], total_matches=None),
+                _odata_result(objects=[], total_matches=None),
+            ]
+        )
+        req = RepositorySearchRequest(name_patterns=["Z*", "Y*"])
+        resp = await svc.search(req)
+        assert resp.statistics.total_matches == 0
+        assert resp.statistics.returned == 0
+
+    @pytest.mark.asyncio
+    async def test_exact_global_custom_search_request_regression(self):
+        """Reproduces the exact live failing request:
+
+            {
+              "all_custom_objects": true,
+              "object_types": ["PROG", "CLAS", "INTF", "FUGR"],
+              "max_results": 50
+            }
+
+        Expected plan fan-out: 2 patterns (Z*, Y*) x 4 object types = 8 calls.
+        Provider reports total_matches=None on every call (as observed live).
+        The discovery service must not raise, and all_custom_objects pattern
+        generation (Z*, Y*) and plan count must remain unchanged.
+        """
+        from app.services.discovery import _build_plans, _CUSTOM_NAMESPACE_PATTERNS
+
+        object_types = ["PROG", "CLAS", "INTF", "FUGR"]
+
+        # Verify plan fan-out is unchanged: 2 patterns x 4 types = 8 plans.
+        plans = _build_plans(
+            packages=[],
+            patterns=_CUSTOM_NAMESPACE_PATTERNS,
+            plan_types=object_types,
+            include_subpackages=False,
+            max_results=50,
+        )
+        assert len(plans) == 8
+        assert _CUSTOM_NAMESPACE_PATTERNS == ["Z*", "Y*"]
+
+        # 8 provider calls, every one reporting total_matches=None.
+        svc = _make_service_multi([_odata_result(objects=[], total_matches=None) for _ in range(8)])
+        req = RepositorySearchRequest(
+            all_custom_objects=True,
+            object_types=object_types,
+            max_results=50,
+        )
+        resp = await svc.search(req)
+
+        assert isinstance(resp.statistics.total_matches, int)
+        assert resp.statistics.total_matches == 0
+        assert resp.statistics.returned == 0
+        assert resp.criteria.all_custom_objects is True
+        assert resp.criteria.name_patterns == ["Z*", "Y*"]
+        assert sorted(resp.criteria.object_types) == sorted(object_types)
+
+    @pytest.mark.asyncio
+    async def test_known_total_matches_preserved_single_call(self):
+        """A genuinely known single-call total_matches value must not be
+        replaced or corrupted by the null-handling fix.
+        """
+        svc = _make_service(
+            _odata_result(objects=[_prog_row()], total_matches=42, truncated=True)
+        )
+        req = RepositorySearchRequest(packages=["ZFINANCE"])
+        resp = await svc.search(req)
+        assert resp.statistics.total_matches == 42
+
+    @pytest.mark.asyncio
+    async def test_multi_plan_dedup_with_null_total_matches(self):
+        """Multi-plan discovery with overlapping/duplicate objects across
+        calls, total_matches=None on every call, and max_results truncation
+        must deduplicate correctly and still return a valid integer
+        total_matches equal to the final (possibly capped) returned count.
+        """
+        rows_call_1 = [
+            _prog_row(OBJ_NAME="ZFI_REPORT", MATCH_REASON="PACKAGE"),
+            _prog_row(OBJ_NAME="ZFI_REPORT2", MATCH_REASON="PACKAGE"),
+        ]
+        rows_call_2 = [
+            # ZFI_REPORT duplicated across calls -> deduplicated.
+            _prog_row(OBJ_NAME="ZFI_REPORT", MATCH_REASON="NAME_PATTERN"),
+            _prog_row(OBJ_NAME="ZFI_REPORT3", MATCH_REASON="NAME_PATTERN"),
+        ]
+        svc = _make_service_multi(
+            [
+                _odata_result(objects=rows_call_1, total_matches=None),
+                _odata_result(objects=rows_call_2, total_matches=None),
+            ]
+        )
+        req = RepositorySearchRequest(
+            packages=["ZFINANCE"],
+            name_patterns=["ZFI*"],
+            max_results=2,
+        )
+        resp = await svc.search(req)
+        # 3 unique objects deduplicated, capped at max_results=2.
+        assert resp.statistics.returned == 2
+        assert resp.truncated is True
+        assert isinstance(resp.statistics.total_matches, int)
+        assert resp.statistics.total_matches == 2

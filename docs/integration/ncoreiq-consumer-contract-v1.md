@@ -344,6 +344,20 @@ At least one of `packages`, `name_patterns`, or `all_custom_objects=true` must b
 }
 ```
 
+**`statistics.total_matches` semantics:**
+- Represents the best-known count of matching repository objects for this
+  search. When SAP ECC reports an exact total for a single-call search, that
+  value is used directly.
+- When a search fans out into multiple OData calls (e.g. `all_custom_objects`
+  combined with multiple `object_types` generates one call per
+  pattern/package × object type combination), per-call totals from SAP may
+  overlap and cannot be safely summed. In that case `total_matches` is set to
+  the deduplicated `returned` count — i.e. the number of distinct objects
+  actually returned in this response, which is always a well-defined,
+  non-null integer.
+- `total_matches` is **never** `null` in the API response, even when the
+  underlying SAP OData call omits a total-count field.
+
 **Error responses:** `422` (missing selector), `503` (SAP unavailable)
 
 ---

@@ -390,3 +390,64 @@ def test_docs_endpoint_reachable():
     """OpenAPI /docs must be reachable (Phase 3 must not break docs)."""
     resp = client.get("/docs")
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Gate 0E10-R4-DS1 — route-level 422 non-regression for null total_matches
+# ---------------------------------------------------------------------------
+
+
+def test_exact_all_custom_objects_request_does_not_422():
+    """Reproduces the exact live failing request end-to-end through the real
+    RepositoryService -> RepositoryDiscoveryService stack (not a service-level
+    mock), with only the SAP connection provider mocked.
+
+    Request:
+        {
+          "all_custom_objects": true,
+          "object_types": ["PROG", "CLAS", "INTF", "FUGR"],
+          "max_results": 50
+        }
+
+    The mocked provider reproduces the live defect condition
+    (total_matches=None on every OData call).  Before the Gate 0E10-R4-DS1
+    fix this raised a Pydantic ValidationError inside the service layer,
+    surfacing as HTTP 422.  After the fix the route must return 200.
+    """
+    from app.sap.connection.base import ODataDiscoveryResult
+
+    mock_provider = AsyncMock()
+    mock_provider.discover_repository_objects = AsyncMock(
+        return_value=ODataDiscoveryResult(
+            rows=[],
+            truncated=False,
+            total_matches=None,
+            system_id="NC1",
+            client="800",
+            message="",
+        )
+    )
+
+    with patch(
+        "app.api.routes.build_sap_connection_provider",
+        return_value=mock_provider,
+    ):
+        resp = client.post(
+            SEARCH_URL,
+            json={
+                "all_custom_objects": True,
+                "object_types": ["PROG", "CLAS", "INTF", "FUGR"],
+                "max_results": 50,
+            },
+        )
+
+    assert resp.status_code != 422
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data["statistics"]["total_matches"], int)
+    assert data["statistics"]["total_matches"] == 0
+    assert data["statistics"]["returned"] == 0
+    assert data["criteria"]["all_custom_objects"] is True
+    assert sorted(data["criteria"]["name_patterns"]) == ["Y*", "Z*"]
+    # 2 patterns x 4 object types = 8 OData calls expected.
+    assert mock_provider.discover_repository_objects.await_count == 8
