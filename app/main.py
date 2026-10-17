@@ -81,6 +81,17 @@ async def lifespan(app: FastAPI):
     if settings.app_env == "btp":
         _validate_btp_startup(settings)
 
+    # TEST/DEMO ONLY — MCP anonymous-access startup warning.
+    # Never logs credentials, tokens, secrets, or service-key contents.
+    if getattr(settings, "ncoreiq_mcp_auth_mode", "xsuaa") == "none":
+        logger.warning(
+            "event=mcp_auth_disabled "
+            "N-CoreIQ MCP authentication is DISABLED for /mcp/. "
+            "This configuration is intended for controlled TEST/DEMO use only. "
+            "AUTH_MODE=%s continues to protect all other application routes.",
+            settings.auth_mode,
+        )
+
     try:
         from app.jobs.store import SQLiteJobStore
         from app.jobs.artifacts import LocalArtifactStore

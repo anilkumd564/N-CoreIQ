@@ -10,11 +10,14 @@ Runtime modes:
 """
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +353,44 @@ class Settings(BaseSettings):
                 f"NCOREIQ_MCP_TRANSPORT={v!r} is not a supported transport. "
                 f"Supported values: {sorted(_allowed)}. "
                 "Use 'stdio' for local/IDE use, 'streamable_http' for BTP/remote."
+            )
+        return v
+
+    # ------------------------------------------------------------------
+    # TEST/DEMO ONLY — MCP-specific authentication override.
+    #
+    # Default MUST remain "xsuaa" — the global AUTH_MODE continues to
+    # protect /api/v1/* and all other application routes regardless of
+    # this setting. Only /mcp, /mcp/, and /mcp/* are affected.
+    #
+    #   xsuaa (default) — /mcp/* requires a valid XSUAA Bearer token,
+    #                      identical to the global AUTH_MODE=xsuaa behavior.
+    #   none             — /mcp/* bypasses JWT validation entirely and is
+    #                      anonymous. Intended for controlled TEST/DEMO use
+    #                      only. AUTH_MODE itself is NOT changed by this
+    #                      setting — REST endpoints remain XSUAA protected.
+    # ------------------------------------------------------------------
+    ncoreiq_mcp_auth_mode: Literal["xsuaa", "none"] = Field(default="xsuaa")
+
+    @field_validator("ncoreiq_mcp_auth_mode")
+    @classmethod
+    def validate_mcp_auth_mode(cls, v: str) -> str:
+        """Reject unsupported NCOREIQ_MCP_AUTH_MODE values at startup."""
+        _allowed = {"xsuaa", "none"}
+        if v not in _allowed:
+            raise ValueError(
+                f"NCOREIQ_MCP_AUTH_MODE={v!r} is not supported. "
+                f"Supported values: {sorted(_allowed)}. "
+                "Default is 'xsuaa' (secure). Use 'none' only for controlled "
+                "TEST/DEMO deployments that require anonymous MCP access."
+            )
+        if v == "none":
+            logger.warning(
+                "event=mcp_auth_disabled_config "
+                "NCOREIQ_MCP_AUTH_MODE=none — /mcp, /mcp/, and /mcp/* will bypass "
+                "XSUAA JWT authentication. This configuration is intended for "
+                "controlled TEST/DEMO use only. All other endpoints (/api/v1/*, "
+                "etc.) remain protected by AUTH_MODE."
             )
         return v
 

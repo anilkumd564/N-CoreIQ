@@ -114,6 +114,12 @@ modules:
       SAP_DESTINATION_NAME: NC1_ODATA
       EXPORT_MODE: zip
       AUTH_MODE: xsuaa
+      ## TEST/DEMO ONLY — anonymous MCP endpoint.
+      ## Production deployments should use xsuaa.
+      ## Only /mcp, /mcp/, and /mcp/* bypass XSUAA JWT authentication when
+      ## set to "none". AUTH_MODE above continues to protect /api/v1/* and
+      ## all other application routes unconditionally.
+      NCOREIQ_MCP_AUTH_MODE: none
       LOG_LEVEL: INFO
       ## Logging format: json for BTP log aggregation, text for local dev
       LOGGING__FORMAT: json

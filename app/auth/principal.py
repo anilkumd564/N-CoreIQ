@@ -195,3 +195,27 @@ ANONYMOUS_PRINCIPAL = AuthenticatedPrincipal(
     roles=[SCOPE_VIEWER, SCOPE_ANALYST, SCOPE_OPERATOR, SCOPE_ADMIN],
     is_service=False,
 )
+
+
+# ---------------------------------------------------------------------------
+# TEST/DEMO ONLY — MCP anonymous principal.
+#
+# Used exclusively by XSUAAAuthMiddleware when NCOREIQ_MCP_AUTH_MODE=none
+# and the request path is a valid MCP path (/mcp, /mcp/, /mcp/*).
+#
+# Deliberately scoped to Viewer + Analyst only — sufficient for all 15
+# registered MCP tools (search, metadata, source, dependency intelligence,
+# and the full extraction-job workflow: create/list/get/result/download).
+# Does NOT include Operator (cancel/retry job) or Admin (diagnostics,
+# configuration) capabilities, which are not part of the intended
+# repository-intelligence MCP use case and must not be silently exposed
+# through an anonymous MCP endpoint.
+# ---------------------------------------------------------------------------
+
+MCP_ANONYMOUS_PRINCIPAL = AuthenticatedPrincipal(
+    subject="mcp-anonymous",
+    display_name="MCP Anonymous (TEST/DEMO)",
+    scopes=[SCOPE_VIEWER, SCOPE_ANALYST],
+    roles=[SCOPE_VIEWER, SCOPE_ANALYST],
+    is_service=True,
+)

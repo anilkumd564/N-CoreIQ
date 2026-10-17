@@ -42,6 +42,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.auth.principal import (
     ANONYMOUS_PRINCIPAL,
+    MCP_ANONYMOUS_PRINCIPAL,
     SCOPE_ADMIN,
     SCOPE_ANALYST,
     SCOPE_OPERATOR,
@@ -91,6 +92,22 @@ _AUTH_EXEMPT_PATHS = frozenset(
         "/redoc",
     }
 )
+
+
+def _is_mcp_path(path: str) -> bool:
+    """Return True only for the canonical MCP mount paths.
+
+    Matches exactly:
+        /mcp
+        /mcp/
+        /mcp/<anything>
+
+    Deliberately does NOT use a loose prefix match such as
+    ``path.startswith("/mcp")`` because that would incorrectly match
+    unrelated paths like ``/mcp-admin`` or ``/mcpfoo``. Those paths must
+    NEVER be treated as anonymous MCP endpoints.
+    """
+    return path == "/mcp" or path.startswith("/mcp/")
 
 # Source-defined NCoreIQ scope sub-namespace.
 # All scopes in deployment/btp/xs-security.json are declared under the
@@ -409,6 +426,33 @@ class XSUAAAuthMiddleware(BaseHTTPMiddleware):
 
         if effective_mode == "disabled":
             request.state.principal = ANONYMOUS_PRINCIPAL
+            return await call_next(request)
+
+        # ------------------------------------------------------------
+        # TEST/DEMO ONLY — MCP-specific anonymous exemption.
+        #
+        # Only applies when:
+        #   1. effective_mode == "xsuaa" (we are already past the
+        #      global "disabled" short-circuit above), AND
+        #   2. NCOREIQ_MCP_AUTH_MODE == "none" (explicit opt-in), AND
+        #   3. the request path is a valid MCP path (/mcp, /mcp/, /mcp/*)
+        #      using exact/prefix matching that does NOT match
+        #      "/mcp-admin" or "/mcpfoo".
+        #
+        # When all three conditions hold: skip Bearer token extraction
+        # and JWT validation entirely for this request, and attach the
+        # least-privilege MCP_ANONYMOUS_PRINCIPAL (Viewer+Analyst) so
+        # downstream MCP tool authorization continues to function
+        # normally. AUTH_MODE itself remains "xsuaa" — every other path
+        # (including /api/v1/*) is unaffected and still requires a
+        # valid Bearer token.
+        # ------------------------------------------------------------
+        mcp_auth_mode = getattr(self._settings, "ncoreiq_mcp_auth_mode", "xsuaa")
+        if mcp_auth_mode == "none" and _is_mcp_path(path):
+            request.state.principal = MCP_ANONYMOUS_PRINCIPAL
+            logger.debug(
+                "auth_mcp_anonymous_bypass path=%s mcp_auth_mode=none", path
+            )
             return await call_next(request)
 
         # XSUAA validation
