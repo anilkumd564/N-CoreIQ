@@ -17,9 +17,30 @@
       "csrfProtection": false
     },
     {
-      "source": "^/(.*)$",
+      "source": "^/(docs|redoc|openapi.json)$",
       "target": "/$1",
       "destination": "ncoreiq-backend",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/assets/(.*)$",
+      "target": "/assets/$1",
+      "localDir": "resources",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^/favicon.svg$",
+      "target": "/favicon.svg",
+      "localDir": "resources",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
+      "source": "^.*$",
+      "target": "/index.html",
+      "localDir": "resources",
       "authenticationType": "xsuaa",
       "csrfProtection": false
     }

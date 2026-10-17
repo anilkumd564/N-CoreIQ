@@ -157,7 +157,22 @@ modules:
       routes:
         - route: ncoreiq-ui.${default-domain}
     build-parameters:
-      builder: npm
+      ## Custom build: installs AppRouter deps, builds the React/Vite SPA
+      ## from ../frontend (relative to this module's own directory), and
+      ## copies ONLY the production dist/ output into ./resources, which
+      ## is then served by xs-app.json via "localDir": "resources".
+      ## Deterministic — no runtime build occurs at CF startup.
+      builder: custom
+      commands:
+        - npm ci
+        - npm --prefix ../frontend ci
+        - npm --prefix ../frontend run build
+        - mkdir -p resources
+        - cp -r ../frontend/dist/. resources/
+      ## Exclude everything that must never reach the packaged AppRouter.
+      ignore:
+        - ".git/"
+        - "*.log"
     requires:
       - name: ncoreiq-xsuaa
       - name: ncoreiq-backend-api
